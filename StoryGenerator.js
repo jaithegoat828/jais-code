@@ -99,9 +99,10 @@ export function generateStory({ prompt = "", genre = "fantasy", length = 3, mode
   const ending = pick(sb.ends);
 
   const full = `${title}\n\n${firstLine}\n\n${body.join(" ")}\n\n${ending}`;
+  const processed = postProcessText(full, prompt);
   return {
     title,
-    story: full,
+    story: processed,
   };
 }
 
@@ -134,6 +135,126 @@ function fixPunctuationAndCapitalize(text) {
   });
 
   return fixed.join("\n\n");
+}
+
+// --- Post-processing helpers to improve coherence and avoid looping ---
+
+// Remove repetition and short circular loops by collapsing repeated sentences and n-grams
+function removeRepetition(text) {
+  if (!text) return text;
+  const sentences = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (let i = 0; i < sentences.length; i++) {
+    const s = sentences[i];
+    if (i > 0 && s === sentences[i-1]) continue; // drop immediate repeat
+    if (seen.has(s)) continue; // avoid duplicate sentence reuse
+    seen.add(s);
+    out.push(s);
+  }
+  // Remove short repeated windows (n-gram repeats)
+  let joined = out.join(' ');
+  const words = joined.split(/\s+/).filter(Boolean);
+  const maxWindow = 4;
+  const seenWindows = new Set();
+  const resultWords = [];
+  for (let i = 0; i < words.length; i++) {
+    const windowKey = words.slice(Math.max(0, i - maxWindow + 1), i + 1).join(' ').toLowerCase();
+    if (seenWindows.has(windowKey)) continue;
+    resultWords.push(words[i]);
+    seenWindows.add(windowKey);
+  }
+  return resultWords.join(' ');
+}
+
+const DEFAULT_VERBS = [
+  'saw','found','opened','learned','whispered','followed','planted','created','noticed','shelved','said','spoke','walked','listened','remembered','discovered','changed','went','helped','guarded','opened','shouted','wrote','read','built'
+];
+
+function sentenceHasVerb(sentence) {
+  if (!sentence) return false;
+  const s = sentence.toLowerCase();
+  for (const v of DEFAULT_VERBS) if (s.indexOf(' '+v+' ') !== -1) return true;
+  if (/(\bis\b|\bare\b|\bwas\b|\bwere\b|\bhas\b|\bhave\b|\bdo\b|\bdid\b|\bdoes\b)/i.test(sentence)) return true;
+  return false;
+}
+
+function detectEntities(text, prompt) {
+  const entities = new Set();
+  const roleWords = ['librarian','traveler','robot','child','portrait','tree','signal','house','city','machine','teacher'];
+  for (const r of roleWords) if (new RegExp('\\b'+r+'\\b','i').test(text)) entities.add(r);
+  if (prompt) {
+    prompt.split(/\s+/).forEach(w => {
+      const cleaned = w.replace(/[^A-Za-z0-9]/g, '');
+      if (!cleaned) return;
+      if (/[A-Z][a-z]/.test(w) || roleWords.includes(cleaned.toLowerCase())) entities.add(cleaned);
+    });
+  }
+  (text.match(/\b[A-Z][a-z]{2,}\b/g) || []).forEach(w => entities.add(w));
+  return Array.from(entities).slice(0,6);
+}
+
+function ensureEntityActions(text, prompt) {
+  if (!text) return text;
+  const entities = detectEntities(text, prompt);
+  if (entities.length === 0) return text;
+  const sentences = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+  const entityHasAction = {};
+  for (const e of entities) entityHasAction[e.toLowerCase()] = false;
+  for (const s of sentences) {
+    for (const e of entities) {
+      if (s.toLowerCase().includes(e.toLowerCase())) {
+        if (sentenceHasVerb(s)) entityHasAction[e.toLowerCase()] = true;
+      }
+    }
+  }
+  const out = [];
+  for (let i = 0; i < sentences.length; i++) {
+    const s = sentences[i];
+    out.push(s);
+    for (const e of entities) {
+      if (!entityHasAction[e.toLowerCase()] && s.toLowerCase().includes(e.toLowerCase())) {
+        const verb = DEFAULT_VERBS[Math.floor(Math.random()*DEFAULT_VERBS.length)];
+        const entityName = /^[A-Z]/.test(e) ? e : `The ${e}`;
+        const actionSentence = `${entityName} ${verb} something important.`;
+        out.push(actionSentence);
+        entityHasAction[e.toLowerCase()] = true;
+      }
+    }
+  }
+  return out.join(' ');
+}
+
+function grammarPatch(text) {
+  if (!text) return text;
+  const sentences = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+  const roleObjects = ['book','map','key','door','signal','tree','letter','song','clock'];
+  const out = sentences.map(s => {
+    if (sentenceHasVerb(s)) return s;
+    const words = s.split(/\s+/).filter(Boolean);
+    // If the sentence mentions a known role/entity, create a clearer action sentence
+    const entities = detectEntities(s, '');
+    if (entities.length > 0) {
+      const e = entities[0];
+      const verb = DEFAULT_VERBS[Math.floor(Math.random()*DEFAULT_VERBS.length)];
+      const obj = roleObjects[Math.floor(Math.random()*roleObjects.length)];
+      const entityName = /^[A-Z]/.test(e) ? e : `The ${e}`;
+      return `${entityName} ${verb} the ${obj}.`;
+    }
+    // Fallback: use a generic subject and verb
+    const verb = DEFAULT_VERBS[Math.floor(Math.random()*DEFAULT_VERBS.length)];
+    return `They ${verb} something.`;
+  });
+  return out.join(' ');
+}
+
+function postProcessText(text, prompt = '') {
+  if (!text) return text;
+  let t = removeRepetition(text);
+  t = ensureEntityActions(t, prompt);
+  t = grammarPatch(t);
+  t = fixPunctuationAndCapitalize(t);
+  return t;
 }
 
 // Paginate plain text by word count and optionally insert page markers like '--- Page 1/3 ---'.
