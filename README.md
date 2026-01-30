@@ -45,6 +45,17 @@ Note: If you do not set `VITE_OPENAI_API_KEY` in a `.env` file, the app will aut
 
 If you'd like to force the app to run **offline-only** even when an API key exists, set `VITE_FORCE_LOCAL=true` in your `.env` file. When enabled, the UI will show "(Offline-only mode enabled via VITE_FORCE_LOCAL)" and remote calls will be bypassed.
 
+Format selector — Game & Mod support 🎮🧩
+- Use the **Format** dropdown to pick: `Story`, `Game guide`, or `Mod idea`.
+- The app detects game names and versions from your prompt (for example: `Minecraft 1.20.1 create new age`) and will include compatibility notes and version-aware guidance when available.
+- `Game guide` produces structured tips (Overview, Getting Started, Features, Tips, Compatibility).
+- `Mod idea` produces a mod concept, features, implementation steps, and compatibility notes.
+
+Example prompts:
+- "Minecraft 1.20.1 create new age"
+- "Make a mod that adds wings to players for Minecraft 1.20"
+- "Design a sci-fi game level with a ghost signal"
+
 Files:
 - `StoryGenerator.js` — local generation logic (templates + sentence bank)
 - `StoryModel.js` — small Markov-chain based generator for more 'AI-like' results (no network required)
