@@ -36,3 +36,13 @@ This app calls the OpenAI API directly from the browser using `VITE_OPENAI_API_K
 
 ## Notes
 - Vite base is set to `/jais-code/` in `vite.config.js` so the site works on GitHub Pages.
+
+## Offline story generator (works without internet) ✅
+
+This project now includes a **local, offline story generator** that does not call external APIs. Use the checkbox in the app to toggle the local generator on; it supports simple genres, variable length, and uses your prompt as a seed.
+
+Files:
+- `StoryGenerator.js` — local generation logic (templates + sentence bank)
+- UI updated in `App.jsx` to control generator options
+
+This is safe for environments that cannot access the web and is ideal for school projects or demos.
