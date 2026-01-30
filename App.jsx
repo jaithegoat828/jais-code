@@ -10,9 +10,21 @@ export default function App() {
   const [genre, setGenre] = useState("fantasy");
   const [length, setLength] = useState(3);
 
+  // Detect whether an API key is present at build/run time.
+  const hasApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
+
   async function handleSearch() {
     if (!prompt.trim()) return;
     setLoading(true);
+
+    // If user attempted remote mode but no key exists, auto-fallback to local generator
+    if (!useLocal && !hasApiKey) {
+      const { title, story } = generateStory({ prompt, genre, length });
+      setResult(`(No API key found — switched to local generator)\n\n**${title}**\n\n${story}`);
+      setUseLocal(true);
+      setLoading(false);
+      return;
+    }
 
     if (useLocal) {
       const { title, story } = generateStory({ prompt, genre, length });
@@ -22,6 +34,17 @@ export default function App() {
     }
 
     const response = await getBookInfo(prompt);
+
+    // Helpful handling for common error messages from getBookInfo
+    if (typeof response === "string" && response.includes("Missing API key")) {
+      // Auto-fallback and show friendly guidance
+      const { title, story } = generateStory({ prompt, genre, length });
+      setResult(`(Missing API key — using local generator instead)\n\n**${title}**\n\n${story}`);
+      setUseLocal(true);
+      setLoading(false);
+      return;
+    }
+
     setResult(response);
     setLoading(false);
   }
@@ -35,8 +58,14 @@ export default function App() {
           type="checkbox"
           checked={useLocal}
           onChange={(e) => setUseLocal(e.target.checked)}
+          disabled={!hasApiKey} // disable toggling when there is no API key
         />{' '}
         Use local offline generator (no internet)
+        {!hasApiKey && (
+          <span style={{ marginLeft: 8, color: '#f5c542', fontSize: 12 }}>
+            (No API key found — remote mode disabled)
+          </span>
+        )}
       </label>
 
       <input

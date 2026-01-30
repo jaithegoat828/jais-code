@@ -41,9 +41,11 @@ This app calls the OpenAI API directly from the browser using `VITE_OPENAI_API_K
 
 This project now includes a **local, offline story generator** that does not call external APIs. Use the checkbox in the app to toggle the local generator on; it supports simple genres, variable length, and uses your prompt as a seed.
 
+Note: If you do not set `VITE_OPENAI_API_KEY` in a `.env` file, the app will automatically **disable remote mode** and **fallback to the local generator**. If you try to use remote without a key, the app will switch to local and show a helpful message.
+
 Files:
 - `StoryGenerator.js` — local generation logic (templates + sentence bank)
-- UI updated in `App.jsx` to control generator options
+- UI updated in `App.jsx` to control generator options and auto-fallback when no key is present
 - **Save / Share / Copy** buttons: Save downloads the story as a `.txt` file (works on Chromebooks), Share uses the Web Share API when available, and Copy puts the story on the clipboard.
 
 This is safe for environments that cannot access the web and is ideal for school projects or demos.
