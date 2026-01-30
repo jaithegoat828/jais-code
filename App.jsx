@@ -14,10 +14,20 @@ export default function App() {
 
   // Detect whether an API key is present at build/run time.
   const hasApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
+  // Optional: force local-only offline mode via .env (set VITE_FORCE_LOCAL=true)
+  const forceLocal = String(import.meta.env.VITE_FORCE_LOCAL).toLowerCase() === 'true';
 
   async function handleSearch() {
     if (!prompt.trim()) return;
     setLoading(true);
+
+    // If forceLocal is enabled, always use local generator
+    if (forceLocal) {
+      const { title, story } = generateStory({ prompt, genre, length, mode, creativity });
+      setResult(`(Offline mode enabled)\n\n**${title}**\n\n${story}`);
+      setLoading(false);
+      return;
+    }
 
     // If user attempted remote mode but no key exists, auto-fallback to local generator
     if (!useLocal && !hasApiKey) {
@@ -60,12 +70,17 @@ export default function App() {
           type="checkbox"
           checked={useLocal}
           onChange={(e) => setUseLocal(e.target.checked)}
-          disabled={!hasApiKey} // disable toggling when there is no API key
+          disabled={forceLocal || !hasApiKey} // disable toggling when offline forced or no API key
         />{' '}
         Use local offline generator (no internet)
-        {!hasApiKey && (
+        {!hasApiKey && !forceLocal && (
           <span style={{ marginLeft: 8, color: '#f5c542', fontSize: 12 }}>
             (No API key found — remote mode disabled)
+          </span>
+        )}
+        {forceLocal && (
+          <span style={{ marginLeft: 8, color: '#6ecb7c', fontSize: 12 }}>
+            (Offline-only mode enabled via VITE_FORCE_LOCAL)
           </span>
         )}
       </label>

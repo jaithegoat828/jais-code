@@ -43,6 +43,8 @@ This project now includes a **local, offline story generator** that does not cal
 
 Note: If you do not set `VITE_OPENAI_API_KEY` in a `.env` file, the app will automatically **disable remote mode** and **fallback to the local generator**. If you try to use remote without a key, the app will switch to local and show a helpful message.
 
+If you'd like to force the app to run **offline-only** even when an API key exists, set `VITE_FORCE_LOCAL=true` in your `.env` file. When enabled, the UI will show "(Offline-only mode enabled via VITE_FORCE_LOCAL)" and remote calls will be bypassed.
+
 Files:
 - `StoryGenerator.js` — local generation logic (templates + sentence bank)
 - `StoryModel.js` — small Markov-chain based generator for more 'AI-like' results (no network required)
