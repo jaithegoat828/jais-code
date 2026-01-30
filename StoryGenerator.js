@@ -104,6 +104,64 @@ export function generateStory({ prompt = "", genre = "fantasy", length = 3, mode
     story: full,
   };
 }
+
+// Ensure sentences end with proper punctuation and capitalize sentences.
+function fixPunctuationAndCapitalize(text) {
+  if (!text) return text;
+  // Normalize whitespace while preserving paragraph breaks
+  text = text.replace(/\r\n/g, "\n");
+
+  // Split into paragraphs and process each paragraph separately
+  const paragraphs = text.split(/\n\s*\n/).map((p) => p.trim());
+  const fixed = paragraphs.map((p) => {
+    if (!p) return "";
+    // Normalize internal whitespace
+    p = p.replace(/\s+/g, " ");
+    // Split into sentences using existing punctuation if present
+    let sentences = p.split(/(?<=[.!?])\s+/);
+    // If the paragraph had no sentence terminators, treat whole paragraph as one sentence
+    if (sentences.length === 1 && !/[.!?]/.test(sentences[0])) sentences = [sentences[0]];
+    sentences = sentences.map((s) => {
+      s = s.trim();
+      if (s.length === 0) return "";
+      // Ensure sentence ends with punctuation
+      if (!/[.!?]$/.test(s)) s = s + ".";
+      // Capitalize first alpha character
+      s = s.replace(/^[^A-Za-z]*([a-z])/, (m, ch) => m.replace(ch, ch.toUpperCase()));
+      return s;
+    }).filter(Boolean);
+    return sentences.join(" ");
+  });
+
+  return fixed.join("\n\n");
+}
+
+// Paginate plain text by word count and optionally insert page markers like '--- Page 1/3 ---'.
+export function formatStory(text, { wordsPerPage = 100, insertPageMarkers = true } = {}) {
+  if (!text) return text;
+  // First, fix punctuation & capitalization
+  let fixed = fixPunctuationAndCapitalize(text);
+
+  // Split into words while preserving minimal whitespace between words
+  const words = fixed.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return fixed;
+
+  const pages = [];
+  for (let i = 0; i < words.length; i += wordsPerPage) {
+    const chunk = words.slice(i, i + wordsPerPage).join(" ");
+    pages.push(chunk);
+  }
+
+  if (!insertPageMarkers) {
+    // No markers — just join with double line breaks between pages
+    return pages.join("\n\n");
+  }
+
+  const total = pages.length;
+  const out = pages.map((p, idx) => `--- Page ${idx + 1}/${total} ---\n\n${p}`);
+  return out.join("\n\n");
+}
+
 export function availableGenres() {
   return Object.keys(GENRES);
 }

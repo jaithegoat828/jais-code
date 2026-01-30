@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { getBookInfo } from "./api.js";
-import { generateStory, availableGenres } from "./StoryGenerator.js";
+import { generateStory, availableGenres, formatStory } from "./StoryGenerator.js";
 
 export default function App() {
   const [prompt, setPrompt] = useState("");
@@ -11,6 +11,8 @@ export default function App() {
   const [length, setLength] = useState(3);
   const [mode, setMode] = useState("simple"); // 'simple' or 'markov'
   const [creativity, setCreativity] = useState(1);
+  const [insertPageMarkers, setInsertPageMarkers] = useState(true);
+  const [wordsPerPage, setWordsPerPage] = useState(100);
 
   // Detect whether an API key is present at build/run time.
   const hasApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
@@ -24,7 +26,8 @@ export default function App() {
     // If forceLocal is enabled, always use local generator
     if (forceLocal) {
       const { title, story } = generateStory({ prompt, genre, length, mode, creativity });
-      setResult(`(Offline mode enabled)\n\n**${title}**\n\n${story}`);
+      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
+      setResult(`(Offline mode enabled)\n\n**${title}**\n\n${formatted}`);
       setLoading(false);
       return;
     }
@@ -32,7 +35,8 @@ export default function App() {
     // If user attempted remote mode but no key exists, auto-fallback to local generator
     if (!useLocal && !hasApiKey) {
       const { title, story } = generateStory({ prompt, genre, length });
-      setResult(`(No API key found — switched to local generator)\n\n**${title}**\n\n${story}`);
+      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
+      setResult(`(No API key found — switched to local generator)\n\n**${title}**\n\n${formatted}`);
       setUseLocal(true);
       setLoading(false);
       return;
@@ -40,7 +44,8 @@ export default function App() {
 
     if (useLocal) {
       const { title, story } = generateStory({ prompt, genre, length, mode, creativity });
-      setResult(`**${title}**\n\n${story}`);
+      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
+      setResult(`**${title}**\n\n${formatted}`);
       setLoading(false);
       return;
     }
@@ -51,8 +56,17 @@ export default function App() {
     if (typeof response === "string" && response.includes("Missing API key")) {
       // Auto-fallback and show friendly guidance
       const { title, story } = generateStory({ prompt, genre, length });
-      setResult(`(Missing API key — using local generator instead)\n\n**${title}**\n\n${story}`);
+      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
+      setResult(`(Missing API key — using local generator instead)\n\n**${title}**\n\n${formatted}`);
       setUseLocal(true);
+      setLoading(false);
+      return;
+    }
+
+    // If the remote response looks like a long story, apply light formatting for pages/punctuation
+    if (typeof response === "string" && response.length > 200) {
+      const formattedRemote = formatStory(response, { wordsPerPage, insertPageMarkers });
+      setResult(formattedRemote);
       setLoading(false);
       return;
     }
@@ -130,6 +144,27 @@ export default function App() {
             step="0.1"
             value={creativity}
             onChange={(e) => setCreativity(Number(e.target.value))}
+          />
+        </label>
+
+        <label style={{ marginLeft: 12 }}>
+          <input
+            type="checkbox"
+            checked={insertPageMarkers}
+            onChange={(e) => setInsertPageMarkers(e.target.checked)}
+          />{' '}
+          Insert page markers (words per page)
+        </label>
+
+        <label style={{ marginLeft: 8 }}>
+          {wordsPerPage} words/page
+          <input
+            type="number"
+            min="20"
+            step="10"
+            value={wordsPerPage}
+            onChange={(e) => setWordsPerPage(Number(e.target.value))}
+            style={{ width: 80, marginLeft: 6 }}
           />
         </label>
       </div>

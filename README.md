@@ -41,6 +41,10 @@ This app calls the OpenAI API directly from the browser using `VITE_OPENAI_API_K
 
 This project now includes a **local, offline story generator** that does not call external APIs. Use the checkbox in the app to toggle the local generator on; it supports simple genres, variable length, and uses your prompt as a seed.
 
+New formatting features:
+- **Pagination:** the app can insert page markers and split output into pages. The default is **100 words per page**; this can be changed in the UI. Page markers look like `--- Page 1/5 ---` and are included in downloads and copy/share operations when enabled.
+- **Punctuation & Sentences:** the generator now ensures sentences end with `.`, `!`, or `?` where appropriate and capitalizes sentence starts to make output more school-ready.
+
 Note: If you do not set `VITE_OPENAI_API_KEY` in a `.env` file, the app will automatically **disable remote mode** and **fallback to the local generator**. If you try to use remote without a key, the app will switch to local and show a helpful message.
 
 If you'd like to force the app to run **offline-only** even when an API key exists, set `VITE_FORCE_LOCAL=true` in your `.env` file. When enabled, the UI will show "(Offline-only mode enabled via VITE_FORCE_LOCAL)" and remote calls will be bypassed.
