@@ -76,6 +76,68 @@ export default function App() {
         <div className="result-box">
           <h2>Result</h2>
           <pre style={{ whiteSpace: 'pre-wrap' }}>{result}</pre>
+
+          <div className="actions">
+            <button
+              className="btn"
+              onClick={() => {
+                // Download as .txt; extract bold title if present
+                const match = result.match(/\*\*(.*?)\*\*/);
+                const title = match ? match[1] : "story";
+                const text = result.replace(/\*\*(.*?)\*\*/g, "$1");
+                const filename = `${title.replace(/[^a-z0-9\-_ ]/gi, "").replace(/\s+/g, "-")}.txt`;
+                const blob = new Blob([text], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+              }}
+            >Save</button>
+
+            <button
+              className="btn"
+              onClick={async () => {
+                const text = result.replace(/\*\*(.*?)\*\*/g, "$1");
+                if (navigator.share) {
+                  try {
+                    await navigator.share({ title: "Story", text });
+                  } catch (err) {
+                    // user cancelled or share not supported
+                    console.error(err);
+                    alert("Share failed or cancelled.");
+                  }
+                } else if (navigator.clipboard) {
+                  try {
+                    await navigator.clipboard.writeText(text);
+                    alert("Story copied to clipboard (use Ctrl+V to paste/share). If you want to save, press Save.");
+                  } catch (err) {
+                    console.error(err);
+                    alert("Copy failed.");
+                  }
+                } else {
+                  alert("Sharing not available — use Save to download the story.");
+                }
+              }}
+            >Share / Copy</button>
+
+            <button
+              className="btn"
+              onClick={async () => {
+                try {
+                  const text = result.replace(/\*\*(.*?)\*\*/g, "$1");
+                  await navigator.clipboard.writeText(text);
+                  alert("Story copied to clipboard.");
+                } catch (err) {
+                  console.error(err);
+                  alert("Copy failed.");
+                }
+              }}
+            >Copy</button>
+          </div>
         </div>
       )}
     </div>

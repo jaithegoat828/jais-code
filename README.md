@@ -44,5 +44,6 @@ This project now includes a **local, offline story generator** that does not cal
 Files:
 - `StoryGenerator.js` — local generation logic (templates + sentence bank)
 - UI updated in `App.jsx` to control generator options
+- **Save / Share / Copy** buttons: Save downloads the story as a `.txt` file (works on Chromebooks), Share uses the Web Share API when available, and Copy puts the story on the clipboard.
 
 This is safe for environments that cannot access the web and is ideal for school projects or demos.
