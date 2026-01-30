@@ -45,7 +45,8 @@ Note: If you do not set `VITE_OPENAI_API_KEY` in a `.env` file, the app will aut
 
 Files:
 - `StoryGenerator.js` — local generation logic (templates + sentence bank)
-- UI updated in `App.jsx` to control generator options and auto-fallback when no key is present
+- `StoryModel.js` — small Markov-chain based generator for more 'AI-like' results (no network required)
+- UI updated in `App.jsx` to control generator options (Simple vs Advanced Markov), creativity, and auto-fallback when no key is present
 - **Save / Share / Copy** buttons: Save downloads the story as a `.txt` file (works on Chromebooks), Share uses the Web Share API when available, and Copy puts the story on the clipboard.
 
 This is safe for environments that cannot access the web and is ideal for school projects or demos.

@@ -63,19 +63,24 @@ function sentenceBank() {
   };
 }
 
-export function generateStory({ prompt = "", genre = "fantasy", length = 3 } = {}) {
-  // Build a small, coherent story using templates and sentence banks.
+import { generateMarkovStory } from "./StoryModel.js";
+
+export function generateStory({ prompt = "", genre = "fantasy", length = 3, mode = "simple", creativity = 1 } = {}) {
+  if (mode === "markov") {
+    // convert length/creativity into parameters for markov
+    const mkLen = Math.max(60, length * 40);
+    const temperature = Math.max(0.4, Math.min(2, creativity));
+    return generateMarkovStory({ prompt, length: mkLen, temperature });
+  }
+
+  // Simple generator
   const g = GENRES[genre] || GENRES.fantasy;
   const sb = sentenceBank();
 
-  // Title
   const title = `${pick(g.title)} ${pick(g.subject)}`;
-
-  // Hook + first line
   const hook = `${pick(g.subject)} ${pick(g.hook)}`;
   const firstLine = `${pick(sb.beginnings)} ${hook}`;
 
-  // Body: create `length` sentences mixing template and prompt
   const body = [];
   for (let i = 0; i < length; i++) {
     const r = Math.random();
@@ -86,13 +91,11 @@ export function generateStory({ prompt = "", genre = "fantasy", length = 3 } = {
         `They discovered ${pick(["a door", "a book", "a signal", "a map", "a key"])}, and it changed everything.`
       );
     } else {
-      // Incorporate prompt words if provided
       const p = prompt ? prompt.split(" ").slice(0, 3).join(" ") : pick(sb.middles);
       body.push(`${p} became the turning point.`);
     }
   }
 
-  // Ending
   const ending = pick(sb.ends);
 
   const full = `${title}\n\n${firstLine}\n\n${body.join(" ")}\n\n${ending}`;
@@ -101,7 +104,6 @@ export function generateStory({ prompt = "", genre = "fantasy", length = 3 } = {
     story: full,
   };
 }
-
 export function availableGenres() {
   return Object.keys(GENRES);
 }

@@ -9,6 +9,8 @@ export default function App() {
   const [useLocal, setUseLocal] = useState(true);
   const [genre, setGenre] = useState("fantasy");
   const [length, setLength] = useState(3);
+  const [mode, setMode] = useState("simple"); // 'simple' or 'markov'
+  const [creativity, setCreativity] = useState(1);
 
   // Detect whether an API key is present at build/run time.
   const hasApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
@@ -27,7 +29,7 @@ export default function App() {
     }
 
     if (useLocal) {
-      const { title, story } = generateStory({ prompt, genre, length });
+      const { title, story } = generateStory({ prompt, genre, length, mode, creativity });
       setResult(`**${title}**\n\n${story}`);
       setLoading(false);
       return;
@@ -77,6 +79,14 @@ export default function App() {
 
       <div style={{ marginTop: 10 }}>
         <label>
+          Generator:{' '}
+          <select value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="simple">Simple templates</option>
+            <option value="markov">Advanced (Markov)</option>
+          </select>
+        </label>
+
+        <label style={{ marginLeft: 12 }}>
           Genre:{' '}
           <select value={genre} onChange={(e) => setGenre(e.target.value)}>
             {availableGenres().map((g) => (
@@ -93,6 +103,18 @@ export default function App() {
             max="6"
             value={length}
             onChange={(e) => setLength(Number(e.target.value))}
+          />
+        </label>
+
+        <label style={{ marginLeft: 12 }}>
+          Creativity: {creativity.toFixed(1)}
+          <input
+            type="range"
+            min="0.4"
+            max="2"
+            step="0.1"
+            value={creativity}
+            onChange={(e) => setCreativity(Number(e.target.value))}
           />
         </label>
       </div>
