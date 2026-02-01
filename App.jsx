@@ -8,6 +8,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [useLocal, setUseLocal] = useState(true);
   const [genre, setGenre] = useState("fantasy");
+  const [strictFollow, setStrictFollow] = useState(false);
   const [length, setLength] = useState(3);
   const [mode, setMode] = useState("simple"); // 'simple', 'markov', or 'scaffold'
   const [creativity, setCreativity] = useState(1);
@@ -40,7 +41,8 @@ export default function App() {
 
     // If forceLocal is enabled, always use local generator
     if (forceLocal) {
-      const { title, story } = generateStory({ prompt, genre, length, mode, creativity, seed: seed || null });
+      const genresArg = Array.isArray(genre) ? genre : [genre];
+      const { title, story } = generateStory({ prompt, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null });
       const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
       setResult(`(Offline mode enabled)\n\n**${title}**\n\n${formatted}`);
       setLoading(false);
@@ -50,9 +52,14 @@ export default function App() {
 
 
     if (useLocal) {
-      const { title, story } = generateStory({ prompt, genre, length, mode, creativity, seed: seed || null });
+      const genresArg = Array.isArray(genre) ? genre : [genre];
+      const { title, story } = generateStory({ prompt, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null });
       const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
       setResult(`**${title}**\n\n${formatted}`);
+      // save to history
+      const entry = { id: Date.now(), prompt, source: 'local', preview: story.slice(0,250) };
+      const h = [entry, ...history].slice(0,20);
+      setHistory(h); localStorage.setItem('story_history', JSON.stringify(h));
       setLoading(false);
       return;
     }
@@ -178,13 +185,16 @@ export default function App() {
           </select> 
         </label>
 
-        <label style={{ marginLeft: 12 }}>
-          Genre:{' '}
-          <select value={genre} onChange={(e) => setGenre(e.target.value)}>
+        <label style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          Genre(s):
+          <select multiple value={Array.isArray(genre) ? genre : [genre]} onChange={(e) => setGenre(Array.from(e.target.selectedOptions).map(o=>o.value))} style={{ minWidth: 160 }}>
             {availableGenres().map((g) => (
               <option key={g} value={g}>{g}</option>
             ))}
           </select>
+          <label style={{ marginLeft: 6 }}>
+            <input type="checkbox" checked={Array.isArray(genre) && genre.length === availableGenres().length} onChange={(e) => { if (e.target.checked) setGenre(availableGenres()); else setGenre(['fantasy']); }} /> All genres
+          </label>
         </label>
 
         <label style={{ marginLeft: 12 }}>
@@ -219,6 +229,10 @@ export default function App() {
             onChange={(e) => setSeed(e.target.value)}
             style={{ width: 120, marginLeft: 6 }}
           />
+        </label>
+
+        <label style={{ marginLeft: 12 }}>
+          <input type="checkbox" checked={strictFollow} onChange={(e) => setStrictFollow(e.target.checked)} /> <strong>Strict:</strong> follow prompt exactly
         </label>
 
         <label style={{ marginLeft: 12 }}>

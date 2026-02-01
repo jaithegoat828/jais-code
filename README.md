@@ -69,9 +69,10 @@ Example prompts:
 - "Design a sci-fi game level with a ghost signal"
 
 Files:
-- `StoryGenerator.js` — local generation logic (templates + sentence bank)
-- `StoryModel.js` — small Markov-chain based generator for more 'AI-like' results (no network required)
-- UI updated in `App.jsx` to control generator options (Simple vs Advanced Markov), creativity, and auto-fallback when no key is present
+- `StoryGenerator.js` — local generation logic (templates + sentence bank). Now supports **multi-genre** mixes and **Strict** mode to follow prompts closely.
+- `StoryModel.js` — small Markov-chain based generator for more 'AI-like' results (no network required). Markov seeding now accepts genres and a numeric seed for determinism.
+- UI updated in `App.jsx` to control generator options (Simple vs Advanced Markov), **multi-genre selection** (including 'All genres'), **Strict** mode (follow prompt exactly), creativity, model choice (remote), and auto-fallback when no key is present.
 - **Save / Share / Copy** buttons: Save downloads the story as a `.txt` file (works on Chromebooks), Share uses the Web Share API when available, and Copy puts the story on the clipboard.
+- New endpoints: `/api/generate` (server-side proxy for OpenAI) and `/api/feedback` (collect ratings/comments). See the docs above for deployment and environment variable instructions.
 
 This is safe for environments that cannot access the web and is ideal for school projects or demos.

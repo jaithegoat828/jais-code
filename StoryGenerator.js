@@ -144,27 +144,66 @@ function generateScaffoldedStory({ title, protagonist, prompt = '', genre = 'def
   };
 }
 
-export function generateStory({ prompt = "", genre = "fantasy", length = 3, mode = "simple", creativity = 1, seed = null } = {}) {
+export function normalizeGenres(input) {
+  if (!input) return ['fantasy'];
+  if (Array.isArray(input)) return input.map(g => String(g).toLowerCase()).filter(Boolean);
+  if (typeof input === 'string') {
+    const s = input.toLowerCase().trim();
+    if (s === 'all' || s === 'any' || s === 'all genres') return Object.keys(GENRES);
+    // split comma-separated
+    if (s.indexOf(',') !== -1) return s.split(',').map(x => x.trim()).filter(Boolean);
+    return [s];
+  }
+  return ['fantasy'];
+}
+
+export function resolveGenrePool(genres, rng = Math.random) {
+  // genres: array of names
+  const pool = { title: [], subject: [], hook: [] };
+  const gNames = genres && genres.length ? genres : ['fantasy'];
+  for (const name of gNames) {
+    const g = GENRES[name] || GENRES[Object.keys(GENRES).find(k=>k===name)];
+    if (!g) continue;
+    pool.title.push(...g.title);
+    pool.subject.push(...g.subject);
+    pool.hook.push(...g.hook);
+  }
+  // fallback to fantasy if empty
+  if (pool.title.length === 0) {
+    pool.title.push(...GENRES.fantasy.title);
+    pool.subject.push(...GENRES.fantasy.subject);
+    pool.hook.push(...GENRES.fantasy.hook);
+  }
+  return pool;
+}
+
+export function generateStory({ prompt = "", genre = "fantasy", genres = null, strict = false, length = 3, mode = "simple", creativity = 1, seed = null } = {}) {
   const rng = createRNG(seed);
+  // support genres or single genre input
+  const wanted = genres ? normalizeGenres(genres) : normalizeGenres(genre);
+
   if (mode === "markov") {
     // convert length/creativity into parameters for markov
     const mkLen = Math.max(60, length * 40);
     const temperature = Math.max(0.4, Math.min(2, 0.5 + creativity * 0.75));
-    return generateMarkovStory({ prompt, length: mkLen, temperature, seed });
+    // include genre tokens to bias markov
+    const genreSeed = wanted.join(' ');
+    const mkPrompt = `${genreSeed} ${prompt}`.trim();
+    return generateMarkovStory({ prompt: mkPrompt, length: mkLen, temperature, seed });
   }
 
-  // Simple generator
-  const g = GENRES[genre] || GENRES.fantasy;
+  // Simple generator using a pool from resolved genres
+  const gpool = resolveGenrePool(wanted, rng);
   const sb = sentenceBank();
 
-  const title = `${pick(g.title, rng)} ${pick(g.subject, rng)}`;
+  const title = `${pick(gpool.title, rng)} ${pick(gpool.subject, rng)}`;
   const protagonist = chooseProtagonist(prompt, rng);
 
   if (mode === 'scaffold') {
-    return generateScaffoldedStory({ title, protagonist, prompt, genre, length, rng, creativity });
+    return generateScaffoldedStory({ title, protagonist, prompt, genre: wanted[0] || 'fantasy', length, rng, creativity });
   }
 
-  const hook = `${pick(g.subject, rng)} ${pick(g.hook, rng)}`;
+  const hook = `${pick(gpool.subject, rng)} ${pick(gpool.hook, rng)}`;
   const firstLine = `${pick(sb.beginnings, rng)} ${hook}`;
 
   const body = [];
@@ -177,15 +216,33 @@ export function generateStory({ prompt = "", genre = "fantasy", length = 3, mode
       const tmpl = pick(DISCOVERY_TEMPLATES, rng);
       body.push(tmpl.replace("{object}", obj));
     } else {
-      const p = prompt ? prompt.split(" ").slice(0, 3).join(" ") : pick(sb.middles, rng);
-      body.push(`${p} became the turning point.`);
+      // If strict, try to use more of the prompt content verbatim
+      if (strict && prompt) {
+        body.push(`${prompt.trim()} became the turning point.`);
+      } else {
+        const p = prompt ? prompt.split(" ").slice(0, 3).join(" ") : pick(sb.middles, rng);
+        body.push(`${p} became the turning point.`);
+      }
     }
   }
 
   const ending = pick(sb.ends, rng);
 
   const full = `${title}\n\n${firstLine}\n\n${body.join(" ")}\n\n${ending}`;
-  const processed = postProcessText(full, prompt, genre, rng);
+  // pass array of genres for post-processing so ensureEntityActions can use relevant objects
+  const processed = postProcessText(full, prompt, (wanted && wanted[0]) || 'default', rng);
+  // If strict, force inclusion of prompt tokens as sentences if missing
+  if (strict && prompt) {
+    const musts = prompt.split(/\s+/).filter(Boolean).slice(0, 6);
+    let out = processed;
+    for (const m of musts) {
+      if (!new RegExp(`\b${m}\b`, 'i').test(out)) {
+        out += `\n\nThey remembered ${m}.`;
+      }
+    }
+    return { title, story: out };
+  }
+
   return {
     title,
     story: processed,
