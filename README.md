@@ -32,7 +32,15 @@ npm run build
 
 ## Security note ⚠️
 
-This app calls the OpenAI API directly from the browser using `VITE_OPENAI_API_KEY`. That means the key is bundled into the client at runtime and can be exposed to end users. For production or class projects, prefer using a server-side function or proxy to keep your API key secret. See the README for options.
+This app can call OpenAI in two ways:
+
+- **Local (development)**: set `VITE_OPENAI_API_KEY` in a local `.env` (do NOT commit this). This is only for quick testing and will expose the key if you build the client for production.
+- **Recommended (production)**: host a **server-side proxy** (serverless function) that keeps your OpenAI key secret. The repo includes `api/generate.js` as an example serverless proxy (designed for Vercel). The client calls `/api/generate` so your key never appears in the browser.
+
+If you use GitHub Pages for the frontend, host the serverless function separately (for example, on Vercel) and the front-end can call `https://<your-vercel>/api/generate`.
+
+If the server returns `Missing server API key`, deploy the serverless function and add `OPENAI_API_KEY` to your deployment provider's environment variables.
+
 
 ## Notes
 - Vite base is set to `/jais-code/` in `vite.config.js` so the site works on GitHub Pages.

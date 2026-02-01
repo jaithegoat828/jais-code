@@ -1,39 +1,25 @@
-export async function getBookInfo(prompt) {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-
-  if (!apiKey) {
-    return "Missing API key. Create a .env file and set VITE_OPENAI_API_KEY.";
-  }
-
+export async function getBookInfo(prompt, opts = {}) {
+  // Call the serverless proxy at /api/generate. This keeps the real OpenAI key server-side.
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user",
-            content: `Give me a simple explanation about: ${prompt}`,
-          },
-        ],
-        max_tokens: 200,
-      }),
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, ...opts }),
     });
 
     if (!response.ok) {
-      const text = await response.text();
-      console.error("OpenAI error:", response.status, text);
-      return "OpenAI API error. Check repo secrets and rate limits.";
+      const json = await response.json().catch(() => null);
+      if (json && json.error && json.error.includes('Missing server API key')) {
+        return 'Missing server API key. Deploy the serverless function and set OPENAI_API_KEY.';
+      }
+      console.error('Serverless proxy error:', response.status, json);
+      return 'Server error contacting story service.';
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || "No response.";
+    return data.story || 'No response from story service.';
   } catch (err) {
     console.error(err);
-    return "Network error contacting OpenAI API.";
+    return 'Network error contacting story service.';
   }
 }
