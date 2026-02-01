@@ -15,8 +15,8 @@ export default function App() {
   const [insertPageMarkers, setInsertPageMarkers] = useState(true);
   const [wordsPerPage, setWordsPerPage] = useState(100);
 
-  // Detect whether an API key is present at build/run time.
-  const hasApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
+  // Detect whether a local client API key is present at build/run time (used only for quick local testing).
+  const hasClientApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
   // Optional: force local-only offline mode via .env (set VITE_FORCE_LOCAL=true)
   const forceLocal = String(import.meta.env.VITE_FORCE_LOCAL).toLowerCase() === 'true';
 
@@ -32,14 +32,7 @@ export default function App() {
       return;
     }
 
-    // If user attempted remote mode but no key exists, auto-fallback to local generator
-    if (!useLocal && !hasApiKey) {
-      const { title, story } = generateStory({ prompt, genre, length, seed: seed || null });
-      setResult(`(No API key found — switched to local generator)\n\n**${title}**\n\n${formatted}`);
-      setUseLocal(true);
-      setLoading(false);
-      return;
-    }
+
 
     if (useLocal) {
       const { title, story } = generateStory({ prompt, genre, length, mode, creativity, seed: seed || null });
@@ -52,11 +45,11 @@ export default function App() {
     const response = await getBookInfo(prompt);
 
     // Helpful handling for common error messages from getBookInfo
-    if (typeof response === "string" && response.includes("Missing API key")) {
+    if (typeof response === "string" && (response.includes("Missing server API key") || response.includes("Missing API key"))) {
       // Auto-fallback and show friendly guidance
-      const { title, story } = generateStory({ prompt, genre, length });
+      const { title, story } = generateStory({ prompt, genre, length, seed: seed || null });
       const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
-      setResult(`(Missing API key — using local generator instead)\n\n**${title}**\n\n${formatted}`);
+      setResult(`(Missing server API key — using local generator instead)\n\n**${title}**\n\n${formatted}`);
       setUseLocal(true);
       setLoading(false);
       return;
@@ -83,12 +76,12 @@ export default function App() {
           type="checkbox"
           checked={useLocal}
           onChange={(e) => setUseLocal(e.target.checked)}
-          disabled={forceLocal || !hasApiKey} // disable toggling when offline forced or no API key
+          disabled={forceLocal} // disable toggling when offline forced
         />{' '}
         Use local offline generator (no internet)
-        {!hasApiKey && !forceLocal && (
+        {!hasClientApiKey && !forceLocal && (
           <span style={{ marginLeft: 8, color: '#f5c542', fontSize: 12 }}>
-            (No API key found — remote mode disabled)
+            (Remote mode requires a server-side proxy or a local client API key)
           </span>
         )}
         {forceLocal && (
