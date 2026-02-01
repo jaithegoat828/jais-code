@@ -23,6 +23,8 @@ input {
   font-size: 16px;
 }
 
+select { padding: 10px; border-radius: 6px; }
+
 button {
   margin-top: 15px;
   padding: 12px 20px;
@@ -34,9 +36,27 @@ button {
   cursor: pointer;
 }
 
-button:hover {
-  background: #3a6fd9;
-}
+button:hover { background: #3a6fd9; }
+
+.header-controls { display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap }
+
+.result-box { background: linear-gradient(180deg, #262626, #1b1b1b); border: 1px solid rgba(255,255,255,0.04); }
+
+.actions { margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+.actions .btn { padding: 8px 12px; background: #2ebd58; border: none; border-radius: 6px; color: white; cursor: pointer; }
+
+.actions .btn:hover { background: #25a84a; }
+
+.btn { padding: 10px 14px; border-radius: 6px; cursor: pointer; }
+
+.btn:active { transform: translateY(1px); }
+
+.rating { display:flex; gap:6px }
+
+ul { margin: 0; padding: 0; }
+
+h3 { margin-top: 12px; margin-bottom: 6px; font-size: 16px; }
 
 .result-box {
   margin-top: 25px;

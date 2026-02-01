@@ -26,24 +26,36 @@ export default async function handler(req, res) {
   global.__rateLimit.set(ip, record);
 
   try {
-    const systemMsg = `You are a helpful creative writing assistant. Produce a short, coherent story based on the user's prompt. Keep it under ~500 words and respect the genre and tone hints.`;
-    const userMsg = `Prompt: ${prompt}\nGenre: ${genre}\nLengthHint: ${length}\nToneHint: creativity=${creativity}, mode=${mode}`;
+    const fewShots = [
+      { prompt: 'A child finds a clock that can reverse slow moments', story: 'A child wound the small clock and watched the noon sun dip back into morning. Small chances returned; lost words were found, and with them an apology was made. In the quiet after, the child learned that some hours must stay where they belong.' },
+      { prompt: 'An android remembers an old lullaby', story: 'When the machine whistled the old lullaby, the station remembered how to sleep. In the hush, the android found a name written on a crate and decided to care for it as if it were a child.' },
+    ];
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const systemMsg = `You are a concise, creative writing assistant. Given a prompt, return a clear, coherent short story (3–6 paragraphs). Always include a named protagonist when possible, show one action the protagonist takes, and end with a short reflective sentence or line. Respect the genre and tone hints.`;
+
+    const examplesText = fewShots.map(s => `Example Prompt: ${s.prompt}\nExample Story: ${s.story}`).join('\n\n');
+
+    const userMsg = `Prompt: ${prompt}\nGenre: ${genre}\nLengthHint: ${length}\nToneHint: creativity=${creativity}, mode=${mode}, tone=${req.body.tone || 'neutral'}`;
+
+    // Primary request
+    const payload = {
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemMsg },
+        { role: 'system', content: examplesText },
+        { role: 'user', content: userMsg },
+      ],
+      max_tokens: 900,
+      temperature: Math.max(0.4, Math.min(2, 0.5 + creativity * 0.6)),
+    };
+
+    let response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${OPENAI_KEY}`,
       },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemMsg },
-          { role: 'user', content: userMsg },
-        ],
-        max_tokens: 700,
-        temperature: Math.max(0.4, Math.min(2, 0.6 + creativity * 0.6)),
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -52,8 +64,31 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'OpenAI API error. Check server logs.' });
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || data.choices?.[0]?.text || 'No result from OpenAI.';
+    let data = await response.json();
+    let content = data.choices?.[0]?.message?.content || data.choices?.[0]?.text || '';
+
+    // If the response seems too short or low-quality, retry once with slightly higher temperature
+    if ((content || '').length < 120) {
+      console.warn('Short response received, retrying with higher temperature');
+      payload.temperature = Math.min(2, (payload.temperature || 0.8) + 0.6);
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENAI_KEY}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        data = await response.json();
+        content = data.choices?.[0]?.message?.content || data.choices?.[0]?.text || content;
+      }
+    }
+
+    // Basic sanitization and trimming
+    content = (content || '').trim();
+    if (!content) return res.status(500).json({ error: 'OpenAI returned empty content.' });
+
     return res.status(200).json({ story: content });
   } catch (err) {
     console.error(err);

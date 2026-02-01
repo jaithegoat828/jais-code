@@ -12,8 +12,19 @@ export default function App() {
   const [mode, setMode] = useState("simple"); // 'simple', 'markov', or 'scaffold'
   const [creativity, setCreativity] = useState(1);
   const [seed, setSeed] = useState("");
+  const [tone, setTone] = useState('neutral');
+  const [history, setHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('story_history') || '[]'); } catch(e) { return []; }
+  });
   const [insertPageMarkers, setInsertPageMarkers] = useState(true);
   const [wordsPerPage, setWordsPerPage] = useState(100);
+
+  const SAMPLE_PROMPTS = [
+    'Lost sword in an ancient forest',
+    'A robot learns to hum a lullaby',
+    'A librarian hides a map behind a portrait',
+    'Design a cozy fantasy quest for children',
+  ];
 
   // Detect whether a local client API key is present at build/run time (used only for quick local testing).
   const hasClientApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
@@ -27,6 +38,7 @@ export default function App() {
     // If forceLocal is enabled, always use local generator
     if (forceLocal) {
       const { title, story } = generateStory({ prompt, genre, length, mode, creativity, seed: seed || null });
+      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
       setResult(`(Offline mode enabled)\n\n**${title}**\n\n${formatted}`);
       setLoading(false);
       return;
@@ -42,7 +54,7 @@ export default function App() {
       return;
     }
 
-    const response = await getBookInfo(prompt);
+    const response = await getBookInfo(prompt, { genre, length, mode, creativity, tone, seed: seed || null });
 
     // Helpful handling for common error messages from getBookInfo
     if (typeof response === "string" && (response.includes("Missing server API key") || response.includes("Missing API key"))) {
@@ -59,11 +71,29 @@ export default function App() {
     if (typeof response === "string" && response.length > 200) {
       const formattedRemote = formatStory(response, { wordsPerPage, insertPageMarkers });
       setResult(formattedRemote);
+      // Save to history
+      const entry = { id: Date.now(), prompt, source: 'remote', preview: (response || '').slice(0, 250) };
+      const h = [entry, ...history].slice(0, 20);
+      setHistory(h);
+      localStorage.setItem('story_history', JSON.stringify(h));
       setLoading(false);
       return;
     }
 
-    setResult(response);
+    // If response is an object (our proxy), extract .story
+    if (response && typeof response === 'object' && response.story) {
+      const formattedRemote = formatStory(response.story, { wordsPerPage, insertPageMarkers });
+      setResult(`**Remote Story**\n\n${formattedRemote}`);
+      const entry = { id: Date.now(), prompt, source: 'remote', preview: (response.story || '').slice(0, 250) };
+      const h = [entry, ...history].slice(0, 20);
+      setHistory(h);
+      localStorage.setItem('story_history', JSON.stringify(h));
+      setLoading(false);
+      return;
+    }
+
+    // Fallback: display whatever we got
+    setResult(typeof response === 'string' ? response : JSON.stringify(response));
     setLoading(false);
   }
 
@@ -91,12 +121,32 @@ export default function App() {
         )}
       </label>
 
-      <input
-        type="text"
-        placeholder="Enter a prompt or seed words..."
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-      />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input
+          type="text"
+          placeholder="Enter a prompt or seed words..."
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          style={{ flex: 1 }}
+        />
+        <select value={prompt} onChange={(e) => setPrompt(e.target.value)} style={{ width: 220 }}>
+          <option value="">-- Sample prompts --</option>
+          {SAMPLE_PROMPTS.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'center' }}>
+        <label>Tone: </label>
+        <select value={tone} onChange={(e) => setTone(e.target.value)}>
+          <option value="neutral">Neutral</option>
+          <option value="whimsical">Whimsical</option>
+          <option value="dark">Dark</option>
+          <option value="child">Child-friendly</option>
+          <option value="dramatic">Dramatic</option>
+        </select>
+      </div>
 
       <div style={{ marginTop: 10 }}>
         <label>
@@ -229,6 +279,29 @@ export default function App() {
               }}
             >Share / Copy</button>
 
+            <button className="btn" onClick={() => { setLoading(true); setCreativity(Math.min(2, creativity + 0.3)); handleSearch(); }} style={{ background: '#ffa500' }}>Regenerate</button>
+
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 13, marginRight: 6 }}>Rate:</span>
+              {[1,2,3,4,5].map(n => (
+                <button key={n} className="btn" onClick={() => {
+                  const key = `rating_${Date.now()}`;
+                  try {
+                    const r = JSON.parse(localStorage.getItem('ratings') || '[]');
+                    r.unshift({ id: key, score: n, prompt, timestamp: Date.now() });
+                    localStorage.setItem('ratings', JSON.stringify(r));
+                    alert('Thanks for the feedback!');
+                  } catch (e) { console.error(e); }
+                }} style={{ background: '#8b5cf6' }}>{n}</button>
+              ))}
+            </div>
+
+            <div style={{ marginLeft: 8 }}>
+              <button className="btn" onClick={() => {
+                const t = history[0]; if (t) { setPrompt(t.prompt); setResult(t.preview); }
+              }}>Show last</button>
+            </div>
+
             <button
               className="btn"
               onClick={async () => {
@@ -243,6 +316,23 @@ export default function App() {
               }}
             >Copy</button>
           </div>
+
+          {history.length > 0 && (
+            <div style={{ marginTop: 12, textAlign: 'left' }}>
+              <h3>Recent</h3>
+              <ul style={{ listStyle: 'none', padding: 0 }}>
+                {history.map(h => (
+                  <li key={h.id} style={{ marginBottom: 8 }}>
+                    <button className="btn" style={{ background: '#333', padding: '8px 10px', width: '100%', textAlign: 'left' }} onClick={() => {
+                      setPrompt(h.prompt); setResult(h.preview);
+                    }}>
+                      <strong>{h.source === 'remote' ? 'Remote' : 'Local'}</strong>: {h.prompt.slice(0, 80)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -27,10 +27,13 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Upload artifact for GitHub Pages
-        uses: actions/upload-pages-artifact@v1
+      - name: Deploy to gh-pages branch (fallback to peaceiris)
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: ./dist
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
 
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v1
+      # Note: Using peaceiris/actions-gh-pages avoids deprecated internal action versions and pushes to gh-pages. If you prefer GitHub Pages via the Pages API artifact flow, revert to upload-pages-artifact & deploy-pages steps once deprecation is resolved.
