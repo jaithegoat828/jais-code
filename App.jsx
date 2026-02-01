@@ -13,9 +13,12 @@ export default function App() {
   const [creativity, setCreativity] = useState(1);
   const [seed, setSeed] = useState("");
   const [tone, setTone] = useState('neutral');
+  const [modelChoice, setModelChoice] = useState('gpt-4o-mini');
   const [history, setHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('story_history') || '[]'); } catch(e) { return []; }
   });
+  const [clarifyQuestion, setClarifyQuestion] = useState('');
+  const [autoAskClarify, setAutoAskClarify] = useState(true);
   const [insertPageMarkers, setInsertPageMarkers] = useState(true);
   const [wordsPerPage, setWordsPerPage] = useState(100);
 
@@ -54,7 +57,7 @@ export default function App() {
       return;
     }
 
-    const response = await getBookInfo(prompt, { genre, length, mode, creativity, tone, seed: seed || null });
+    const response = await getBookInfo(prompt, { genre, length, mode, creativity, tone, seed: seed || null, model: modelChoice });
 
     // Helpful handling for common error messages from getBookInfo
     if (typeof response === "string" && (response.includes("Missing server API key") || response.includes("Missing API key"))) {
@@ -63,6 +66,13 @@ export default function App() {
       const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
       setResult(`(Missing server API key — using local generator instead)\n\n**${title}**\n\n${formatted}`);
       setUseLocal(true);
+      setLoading(false);
+      return;
+    }
+
+    // If the server suggests a clarifying question, show it to the user
+    if (response && response.clarify && autoAskClarify) {
+      setClarifyQuestion(response.clarify);
       setLoading(false);
       return;
     }
@@ -146,6 +156,16 @@ export default function App() {
           <option value="child">Child-friendly</option>
           <option value="dramatic">Dramatic</option>
         </select>
+
+        <label style={{ marginLeft: 8 }}>Model: </label>
+        <select value={modelChoice} onChange={(e) => setModelChoice(e.target.value)}>
+          <option value="gpt-4o-mini">gpt-4o-mini (fast)</option>
+          <option value="gpt-4o">gpt-4o (higher quality)</option>
+        </select>
+
+        <label style={{ marginLeft: 8 }}>
+          <input type="checkbox" checked={autoAskClarify} onChange={(e)=>setAutoAskClarify(e.target.checked)} /> Auto-ask clarify
+        </label>
       </div>
 
       <div style={{ marginTop: 10 }}>
@@ -284,14 +304,11 @@ export default function App() {
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <span style={{ fontSize: 13, marginRight: 6 }}>Rate:</span>
               {[1,2,3,4,5].map(n => (
-                <button key={n} className="btn" onClick={() => {
-                  const key = `rating_${Date.now()}`;
+                <button key={n} className="btn" onClick={async () => {
                   try {
-                    const r = JSON.parse(localStorage.getItem('ratings') || '[]');
-                    r.unshift({ id: key, score: n, prompt, timestamp: Date.now() });
-                    localStorage.setItem('ratings', JSON.stringify(r));
+                    await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, rating: n, comment: '', source: useLocal ? 'local' : 'remote' }) });
                     alert('Thanks for the feedback!');
-                  } catch (e) { console.error(e); }
+                  } catch (e) { console.error(e); alert('Feedback failed.'); }
                 }} style={{ background: '#8b5cf6' }}>{n}</button>
               ))}
             </div>

@@ -7,8 +7,15 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Missing server API key. Set OPENAI_API_KEY in your deployment environment.' });
   }
 
-  const { prompt = '', genre = 'fantasy', length = 3, mode = 'simple', creativity = 1 } = req.body || {};
+  const { prompt = '', genre = 'fantasy', length = 3, mode = 'simple', creativity = 1, model = null } = req.body || {};
   if (!prompt || typeof prompt !== 'string') return res.status(400).json({ error: 'Invalid or missing prompt.' });
+
+  // If prompt is very short, suggest a clarifying question instead of generating directly
+  const words = (prompt || '').split(/\s+/).filter(Boolean).length;
+  if (words < 3 && !req.body._clarified) {
+    const suggestion = `Could you tell me: who is the main character? Where does this take place? What tone do you want (e.g., whimsical, dark, neutral)?`;
+    return res.status(200).json({ clarify: suggestion });
+  }
 
   // Basic abuse protection (very small in-memory rate limiting for demo purposes)
   // Note: Serverless environments may not reliably persist this between invocations.
@@ -38,8 +45,9 @@ export default async function handler(req, res) {
     const userMsg = `Prompt: ${prompt}\nGenre: ${genre}\nLengthHint: ${length}\nToneHint: creativity=${creativity}, mode=${mode}, tone=${req.body.tone || 'neutral'}`;
 
     // Primary request
+    const chosenModel = model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
     const payload = {
-      model: 'gpt-4o-mini',
+      model: chosenModel,
       messages: [
         { role: 'system', content: systemMsg },
         { role: 'system', content: examplesText },
