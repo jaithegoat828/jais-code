@@ -36,7 +36,20 @@ function buildMarkov(order = 3) {
   return { order, model };
 }
 
-function pickWeighted(arr, temperature = 1) {
+// Simple seeded RNG helper for deterministic outputs
+function createRNG(seed) {
+  if (seed == null) return Math.random;
+  let a = Number(seed) >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pickWeighted(arr, temperature = 1, rng = Math.random) {
   if (!arr || arr.length === 0) return null;
   // simple weighting: count frequencies
   const freqs = {};
@@ -45,7 +58,7 @@ function pickWeighted(arr, temperature = 1) {
   // apply temperature by raising counts: higher temperature = more uniform
   const weights = entries.map(([k, v]) => ({ k, w: Math.pow(v, 1 / Math.max(0.1, temperature)) }));
   const total = weights.reduce((s, e) => s + e.w, 0);
-  let r = Math.random() * total;
+  let r = rng() * total;
   for (const e of weights) {
     r -= e.w;
     if (r <= 0) return e.k;
@@ -53,11 +66,12 @@ function pickWeighted(arr, temperature = 1) {
   return weights[weights.length - 1].k;
 }
 
-export function generateMarkovStory({ prompt = '', length = 80, temperature = 1, order = 2 } = {}) {
+export function generateMarkovStory({ prompt = '', length = 80, temperature = 1, order = 3, seed = null } = {}) {
+  const rng = createRNG(seed);
   const { model } = buildMarkov(order);
 
   const seedWords = tokenize(prompt).slice(0, order);
-  let key = seedWords.length === order ? seedWords.join(' ') : pick(Array.from(model.keys()));
+  let key = seedWords.length === order ? seedWords.join(' ') : Array.from(model.keys())[Math.floor(rng()*Array.from(model.keys()).length)];
 
   const out = [];
   const maxWords = Math.max(40, length * 20);
@@ -66,7 +80,7 @@ export function generateMarkovStory({ prompt = '', length = 80, temperature = 1,
   for (let i = 0; i < maxWords; i++) {
     let nexts = model.get(key) || [];
     // Try to avoid choosing a next word that creates a ngram we've just seen
-    let candidate = pickWeighted(nexts, temperature) || '';
+    let candidate = pickWeighted(nexts, temperature, rng) || '';
     if (candidate) {
       const trial = key.split(' ').slice(1).concat(candidate).join(' ').toLowerCase();
       if (recentNgrams.has(trial)) {
@@ -81,16 +95,16 @@ export function generateMarkovStory({ prompt = '', length = 80, temperature = 1,
       }
     }
 
-    const next = candidate || pickWeighted(Array.from(model.keys()), temperature) || '';
+    const next = candidate || pickWeighted(Array.from(model.keys()), temperature, rng) || '';
     if (!next) break;
     out.push(next);
     const parts = key.split(' ').slice(1);
     parts.push(next);
     key = parts.join(' ');
-    // track recent ngrams
+    // track recent ngrams (longer window to avoid circular repeats)
     const ngram = (key).toLowerCase();
     recentNgrams.add(ngram);
-    if (recentNgrams.size > 100) {
+    if (recentNgrams.size > 200) {
       // keep it bounded
       const it = recentNgrams.values().next().value;
       recentNgrams.delete(it);
@@ -102,6 +116,7 @@ export function generateMarkovStory({ prompt = '', length = 80, temperature = 1,
 
   // Lightweight post-processing to reduce repeats and fix basic punctuation
   function removeRepetitionLocal(text) {
+    // remove repeated sentences and repeated n-grams up to length 6
     const sentences = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
     const seen = new Set();
     const outS = [];
@@ -112,7 +127,18 @@ export function generateMarkovStory({ prompt = '', length = 80, temperature = 1,
       seen.add(s);
       outS.push(s);
     }
-    return outS.join(' ');
+    let joined = outS.join(' ');
+    const words = joined.split(/\s+/).filter(Boolean);
+    const maxWindow = 6;
+    const seenWindows = new Set();
+    const resultWords = [];
+    for (let i = 0; i < words.length; i++) {
+      const windowKey = words.slice(Math.max(0, i - maxWindow + 1), i + 1).join(' ').toLowerCase();
+      if (seenWindows.has(windowKey)) continue;
+      resultWords.push(words[i]);
+      seenWindows.add(windowKey);
+    }
+    return resultWords.join(' ');
   }
 
   function fixPuncLocal(text) {

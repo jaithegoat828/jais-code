@@ -9,8 +9,9 @@ export default function App() {
   const [useLocal, setUseLocal] = useState(true);
   const [genre, setGenre] = useState("fantasy");
   const [length, setLength] = useState(3);
-  const [mode, setMode] = useState("simple"); // 'simple' or 'markov'
+  const [mode, setMode] = useState("simple"); // 'simple', 'markov', or 'scaffold'
   const [creativity, setCreativity] = useState(1);
+  const [seed, setSeed] = useState("");
   const [insertPageMarkers, setInsertPageMarkers] = useState(true);
   const [wordsPerPage, setWordsPerPage] = useState(100);
 
@@ -25,8 +26,7 @@ export default function App() {
 
     // If forceLocal is enabled, always use local generator
     if (forceLocal) {
-      const { title, story } = generateStory({ prompt, genre, length, mode, creativity });
-      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
+      const { title, story } = generateStory({ prompt, genre, length, mode, creativity, seed: seed || null });
       setResult(`(Offline mode enabled)\n\n**${title}**\n\n${formatted}`);
       setLoading(false);
       return;
@@ -34,8 +34,7 @@ export default function App() {
 
     // If user attempted remote mode but no key exists, auto-fallback to local generator
     if (!useLocal && !hasApiKey) {
-      const { title, story } = generateStory({ prompt, genre, length });
-      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
+      const { title, story } = generateStory({ prompt, genre, length, seed: seed || null });
       setResult(`(No API key found — switched to local generator)\n\n**${title}**\n\n${formatted}`);
       setUseLocal(true);
       setLoading(false);
@@ -43,7 +42,7 @@ export default function App() {
     }
 
     if (useLocal) {
-      const { title, story } = generateStory({ prompt, genre, length, mode, creativity });
+      const { title, story } = generateStory({ prompt, genre, length, mode, creativity, seed: seed || null });
       const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
       setResult(`**${title}**\n\n${formatted}`);
       setLoading(false);
@@ -112,7 +111,8 @@ export default function App() {
           <select value={mode} onChange={(e) => setMode(e.target.value)}>
             <option value="simple">Simple templates</option>
             <option value="markov">Advanced (Markov)</option>
-          </select>
+            <option value="scaffold">Scaffolded (3-act)</option>
+          </select> 
         </label>
 
         <label style={{ marginLeft: 12 }}>
@@ -144,6 +144,17 @@ export default function App() {
             step="0.1"
             value={creativity}
             onChange={(e) => setCreativity(Number(e.target.value))}
+          />
+        </label>
+
+        <label style={{ marginLeft: 12 }}>
+          Seed (optional):
+          <input
+            type="text"
+            placeholder="e.g., 42"
+            value={seed}
+            onChange={(e) => setSeed(e.target.value)}
+            style={{ width: 120, marginLeft: 6 }}
           />
         </label>
 

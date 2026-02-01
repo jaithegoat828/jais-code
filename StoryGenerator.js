@@ -34,8 +34,21 @@ const GENRES = {
   },
 };
 
-function pick(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
+// Seeded RNG helper (mulberry32-like) — deterministic when a numeric seed is provided
+function createRNG(seed) {
+  if (seed == null) return Math.random;
+  let a = Number(seed) >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pick(arr, rng = Math.random) {
+  return arr[Math.floor(rng() * arr.length)];
 }
 
 function sentenceBank() {
@@ -46,6 +59,8 @@ function sentenceBank() {
       "In a small village,",
       "In the future,",
       "On the night the stars fell,",
+      "When the leaves turned silver,",
+      "Under a low moon,",
     ],
     middles: [
       "a traveler met a secret.",
@@ -53,53 +68,124 @@ function sentenceBank() {
       "someone found a map to somewhere no one had been.",
       "the city whispered in a language only a child could hear.",
       "the machine learned the taste of rain.",
+      "a rumor curled through the market like smoke.",
+      "a strange compass pointed where compasses shouldn't.",
     ],
     ends: [
       "And they would never be the same.",
       "No one believed them, but the stars did.",
       "It became the kind of story told in half-lights.",
       "For a long time, people wondered what happened next.",
+      "The world kept its secret for a little longer.",
     ],
   };
 }
 
+const DISCOVERY_TEMPLATES = [
+  "They discovered {object}, and it changed everything.",
+  "Finding {object} shifted the course of their days.",
+  "A {object} appeared, and life tilted toward the unknown.",
+  "They unearthed {object}; from that moment, nothing was the same.",
+];
+
+const ADDITIONAL_PROTAGONISTS = [
+  "a traveler",
+  "the librarian",
+  "an old wizard",
+  "a curious child",
+  "an android",
+  "a wandering bard",
+];
+
 import { generateMarkovStory } from "./StoryModel.js";
 
-export function generateStory({ prompt = "", genre = "fantasy", length = 3, mode = "simple", creativity = 1 } = {}) {
+function chooseProtagonist(prompt = '', rng = Math.random) {
+  if (!prompt) return pick(ADDITIONAL_PROTAGONISTS, rng);
+  // extract capitalized words or known roles
+  const m = prompt.match(/\b([A-Z][a-z]{2,})\b/g);
+  if (m && m.length) return m[0];
+  const roleMatch = prompt.match(/\b(librarian|traveler|robot|child|portrait|tree|teacher|wizard|king|queen)\b/i);
+  if (roleMatch) return roleMatch[0];
+  return pick(ADDITIONAL_PROTAGONISTS, rng);
+}
+
+function generateScaffoldedStory({ title, protagonist, prompt = '', genre = 'default', length = 3, rng = Math.random, creativity = 1 } = {}) {
+  // 3-act scaffold: setup, conflict, resolution
+  const sb = sentenceBank();
+  const setup = `${pick(sb.beginnings, rng)} ${protagonist} ${pick([
+    'found something unexpected.',
+    'heard a rumor that would not let go.',
+    'stumbled upon a whisper from the past.',
+  ], rng)}`;
+
+  const conflict = `${pick(['Soon','Before long','Then,'], rng)} ${protagonist} ${pick([
+    'was forced to choose.',
+    'followed the map into a place with no sound.',
+    'faced a secret that would not stay buried.',
+  ], rng)}`;
+
+  const resolution = `${pick(['In the end','Finally','At last'], rng)} ${protagonist} ${pick([
+    'held the answer in their hands.',
+    'understood the cost of the key.',
+    'learned what the sword truly guarded.',
+  ], rng)}`;
+
+  // optionally spice with small Markov output for texture
+  let texture = '';
+  if (creativity > 1.2) {
+    const m = generateMarkovStory({ prompt, length: Math.max(40, length * 20), temperature: Math.min(2, 0.6 + creativity * 0.6), seed: Math.floor(rng() * 1e9) });
+    texture = '\n\n' + m.story.split(/\n\n/).slice(0, 2).join('\n\n');
+  }
+
+  const full = `${title}\n\n${setup}\n\n${conflict}\n\n${resolution}${texture}`;
+  return {
+    title,
+    story: postProcessText(full, prompt, genre, rng),
+  };
+}
+
+export function generateStory({ prompt = "", genre = "fantasy", length = 3, mode = "simple", creativity = 1, seed = null } = {}) {
+  const rng = createRNG(seed);
   if (mode === "markov") {
     // convert length/creativity into parameters for markov
     const mkLen = Math.max(60, length * 40);
-    const temperature = Math.max(0.4, Math.min(2, creativity));
-    return generateMarkovStory({ prompt, length: mkLen, temperature });
+    const temperature = Math.max(0.4, Math.min(2, 0.5 + creativity * 0.75));
+    return generateMarkovStory({ prompt, length: mkLen, temperature, seed });
   }
 
   // Simple generator
   const g = GENRES[genre] || GENRES.fantasy;
   const sb = sentenceBank();
 
-  const title = `${pick(g.title)} ${pick(g.subject)}`;
-  const hook = `${pick(g.subject)} ${pick(g.hook)}`;
-  const firstLine = `${pick(sb.beginnings)} ${hook}`;
+  const title = `${pick(g.title, rng)} ${pick(g.subject, rng)}`;
+  const protagonist = chooseProtagonist(prompt, rng);
+
+  if (mode === 'scaffold') {
+    return generateScaffoldedStory({ title, protagonist, prompt, genre, length, rng, creativity });
+  }
+
+  const hook = `${pick(g.subject, rng)} ${pick(g.hook, rng)}`;
+  const firstLine = `${pick(sb.beginnings, rng)} ${hook}`;
 
   const body = [];
   for (let i = 0; i < length; i++) {
-    const r = Math.random();
-    if (r < 0.4) {
-      body.push(pick(sb.middles));
-    } else if (r < 0.8) {
-      body.push(
-        `They discovered ${pick(["a door", "a book", "a signal", "a map", "a key"])}, and it changed everything.`
-      );
+    const r = rng();
+    if (r < 0.35) {
+      body.push(pick(sb.middles, rng));
+    } else if (r < 0.75) {
+      const obj = pick(["a door", "a book", "a signal", "a map", "a key", "a brass key", "an old journal", "a strange console"], rng);
+      const tmpl = pick(DISCOVERY_TEMPLATES, rng);
+      body.push(tmpl.replace("{object}", obj));
     } else {
-      const p = prompt ? prompt.split(" ").slice(0, 3).join(" ") : pick(sb.middles);
+      const p = prompt ? prompt.split(" ").slice(0, 3).join(" ") : pick(sb.middles, rng);
       body.push(`${p} became the turning point.`);
     }
   }
 
-  const ending = pick(sb.ends);
+  const ending = pick(sb.ends, rng);
 
   const full = `${title}\n\n${firstLine}\n\n${body.join(" ")}\n\n${ending}`;
-  const processed = postProcessText(full, prompt);
+  const processed = postProcessText(full, prompt, genre, rng);
   return {
     title,
     story: processed,
@@ -171,6 +257,14 @@ const DEFAULT_VERBS = [
   'saw','found','opened','learned','whispered','followed','planted','created','noticed','shelved','said','spoke','walked','listened','remembered','discovered','changed','went','helped','guarded','opened','shouted','wrote','read','built'
 ];
 
+// Objects/helpers per genre to create more natural actions
+const GENRE_ACTION_OBJECTS = {
+  fantasy: ['sword','spellbook','rune','talisman','oak'],
+  sciFi: ['console','circuit','antenna','reactor','data core'],
+  mystery: ['book','map','key','letter','casefile'],
+  default: ['object','item','thing']
+};
+
 function sentenceHasVerb(sentence) {
   if (!sentence) return false;
   const s = sentence.toLowerCase();
@@ -194,7 +288,7 @@ function detectEntities(text, prompt) {
   return Array.from(entities).slice(0,6);
 }
 
-function ensureEntityActions(text, prompt) {
+function ensureEntityActions(text, prompt, genre='default', rng = Math.random) {
   if (!text) return text;
   const entities = detectEntities(text, prompt);
   if (entities.length === 0) return text;
@@ -209,14 +303,17 @@ function ensureEntityActions(text, prompt) {
     }
   }
   const out = [];
+  // Ensure a small chain of actions exists for key entities (protagonist -> seeks -> faces -> resolves)
   for (let i = 0; i < sentences.length; i++) {
     const s = sentences[i];
     out.push(s);
+    const objects = GENRE_ACTION_OBJECTS[genre] || GENRE_ACTION_OBJECTS.default;
     for (const e of entities) {
       if (!entityHasAction[e.toLowerCase()] && s.toLowerCase().includes(e.toLowerCase())) {
-        const verb = DEFAULT_VERBS[Math.floor(Math.random()*DEFAULT_VERBS.length)];
+        const verb = DEFAULT_VERBS[Math.floor(rng()*DEFAULT_VERBS.length)];
+        const obj = objects[Math.floor(rng()*objects.length)];
         const entityName = /^[A-Z]/.test(e) ? e : `The ${e}`;
-        const actionSentence = `${entityName} ${verb} something important.`;
+        const actionSentence = `${entityName} ${verb} the ${obj}.`;
         out.push(actionSentence);
         entityHasAction[e.toLowerCase()] = true;
       }
@@ -225,10 +322,10 @@ function ensureEntityActions(text, prompt) {
   return out.join(' ');
 }
 
-function grammarPatch(text) {
+function grammarPatch(text, genre='default', rng = Math.random) {
   if (!text) return text;
   const sentences = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
-  const roleObjects = ['book','map','key','door','signal','tree','letter','song','clock'];
+  const objects = GENRE_ACTION_OBJECTS[genre] || GENRE_ACTION_OBJECTS.default;
   const out = sentences.map(s => {
     if (sentenceHasVerb(s)) return s;
     const words = s.split(/\s+/).filter(Boolean);
@@ -236,23 +333,24 @@ function grammarPatch(text) {
     const entities = detectEntities(s, '');
     if (entities.length > 0) {
       const e = entities[0];
-      const verb = DEFAULT_VERBS[Math.floor(Math.random()*DEFAULT_VERBS.length)];
-      const obj = roleObjects[Math.floor(Math.random()*roleObjects.length)];
+      const verb = DEFAULT_VERBS[Math.floor(rng()*DEFAULT_VERBS.length)];
+      const obj = objects[Math.floor(rng()*objects.length)];
       const entityName = /^[A-Z]/.test(e) ? e : `The ${e}`;
       return `${entityName} ${verb} the ${obj}.`;
     }
-    // Fallback: use a generic subject and verb
-    const verb = DEFAULT_VERBS[Math.floor(Math.random()*DEFAULT_VERBS.length)];
-    return `They ${verb} something.`;
+    // Fallback: use a generic subject and verb and an object consistent with genre
+    const verb = DEFAULT_VERBS[Math.floor(rng()*DEFAULT_VERBS.length)];
+    const obj = objects[Math.floor(rng()*objects.length)];
+    return `They ${verb} the ${obj}.`;
   });
   return out.join(' ');
 }
 
-function postProcessText(text, prompt = '') {
+function postProcessText(text, prompt = '', genre='default', rng = Math.random) {
   if (!text) return text;
   let t = removeRepetition(text);
-  t = ensureEntityActions(t, prompt);
-  t = grammarPatch(t);
+  t = ensureEntityActions(t, prompt, genre, rng);
+  t = grammarPatch(t, genre, rng);
   t = fixPunctuationAndCapitalize(t);
   return t;
 }
