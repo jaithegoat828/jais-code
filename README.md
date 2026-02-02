@@ -75,3 +75,8 @@ Files:
 - **Save / Share / Copy** buttons: Save downloads the story as a `.txt` file (works on Chromebooks), Share uses the Web Share API when available, and Copy puts the story on the clipboard.
 
 This is safe for environments that cannot access the web and is ideal for school projects or demos.
+
+Remote generation (optional)
+- You can enable **remote** generation using a client API key by setting `VITE_OPENAI_API_KEY` in a `.env` file (NOT recommended for public repos — prefer a server-side proxy to keep keys secret). When `engine` is set to **Remote**, the app can call OpenAI's chat completions directly from the browser and fetch richer, higher-quality results. The UI supports model selection and a 30s timeout to allow longer responses.
+
+Security note: Do not commit your API key to the repo. Using a server-side proxy (serverless function) is safer — include a function named `/api/remote-generate` in your deployment if you prefer not to expose keys to the client.

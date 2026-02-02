@@ -12,15 +12,30 @@ export default function App() {
   const [creativity, setCreativity] = useState(1);
   const [seed, setSeed] = useState("");
   const [tone, setTone] = useState('neutral');
+  const [engine, setEngine] = useState('jai-pro');
+  const [remoteModel, setRemoteModel] = useState('gpt-4o-mini');
+  const REMOTE_TIMEOUT_MS = 30000; // 30 seconds
+  const [grade, setGrade] = useState('Adult');
   const [history, setHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('story_history') || '[]'); } catch(e) { return []; }
   });
+
+  // map numeric prompts like '1' to sample prompts to help quick testing
+  function resolveNumericPrompt(p) {
+    const t = (p || '').trim();
+    if (/^[0-9]+$/.test(t)) {
+      const n = Math.max(1, Math.min(SAMPLE_PROMPTS.length, Number(t)));
+      return SAMPLE_PROMPTS[n-1];
+    }
+    return p;
+  }
   const [clarifyQuestion, setClarifyQuestion] = useState('');
+  const [clarifyAnswer, setClarifyAnswer] = useState('');
   const [autoAskClarify, setAutoAskClarify] = useState(true);
   // Local feedback store
   const addLocalFeedback = (rating, comment='') => {
     const r = JSON.parse(localStorage.getItem('local_feedback') || '[]');
-    r.unshift({ id: Date.now(), prompt, rating, comment, tone, strict: strictFollow, source: 'local' });
+    r.unshift({ id: Date.now(), prompt, rating, comment, tone, strict: strictFollow, engine, grade, source: 'local' });
     localStorage.setItem('local_feedback', JSON.stringify(r));
   };
   const exportFeedback = () => {
@@ -52,15 +67,71 @@ export default function App() {
       return;
     }
 
+    // If we asked for clarification, require the user to provide an answer (or skip) before generating
+    if (clarifyQuestion && !clarifyAnswer) {
+      // user hasn't provided clarification yet
+      setLoading(false);
+      return;
+    }
+
     const genresArg = Array.isArray(genre) ? genre : [genre];
-    const q = clarifyQuestion ? `${clarifyQuestion} ${prompt}` : prompt;
-    const { title, story } = generateStory({ prompt: q, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null, tone });
+    // resolve numeric prompts (e.g., '1' -> sample prompt 1)
+    const rawPrompt = clarifyAnswer ? `${clarifyAnswer} ${prompt}` : prompt;
+    const q = resolveNumericPrompt(rawPrompt);
+
+    // If choosing remote engine, try the remote model (requires client API key in .env)
+    if (engine === 'remote') {
+      const key = import.meta.env.VITE_OPENAI_API_KEY;
+      if (!key) {
+        // no client key — fallback to local generator and inform the user
+        const fallback = generateStory({ prompt: q, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null, tone, engine: 'jai-pro', grade });
+        const formatted = formatStory(fallback.story || fallback, { wordsPerPage, insertPageMarkers });
+        setResult(`(Missing client API key — using local Jai Pro)\n\n**${fallback.title}**\n\n${formatted}`);
+        setLoading(false);
+        return;
+      }
+      try {
+        const payload = { prompt: q, model: remoteModel, genre: genresArg[0] || 'fantasy', length, creativity, tone, seed: seed || null, grade };
+        const remoteRes = await fetch('/api/remote-generate', { // path used for dev servers; api.js supports client-side direct call too
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        if (!remoteRes.ok) throw new Error('Remote generation failed');
+        const json = await remoteRes.json();
+        const rtitle = json.title || 'Untitled';
+        const rstory = json.story || json;
+        const formatted = formatStory(rstory, { wordsPerPage, insertPageMarkers });
+        setResult(`**${rtitle}**\n\n${formatted}`);
+        const entry = { id: Date.now(), prompt, source: 'remote', engine: 'remote', model: remoteModel, grade, preview: rstory.slice(0,250) };
+        const h = [entry, ...history].slice(0,20); setHistory(h); localStorage.setItem('story_history', JSON.stringify(h));
+      } catch (e) {
+        console.error(e);
+        // fallback to local
+        const fallback = generateStory({ prompt: q, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null, tone, engine: 'jai-pro', grade });
+        const formatted = formatStory(fallback.story || fallback, { wordsPerPage, insertPageMarkers });
+        setResult(`(Remote generation failed — using local Jai Pro)\n\n**${fallback.title}**\n\n${formatted}`);
+      } finally {
+        setClarifyQuestion(''); setClarifyAnswer(''); setLoading(false);
+      }
+      return;
+    }
+
+    const res = generateStory({ prompt: q, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null, tone, engine, grade });
+    const title = res.title || 'Untitled';
+    const story = res.story || (typeof res === 'string' ? res : '');
     const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
-    setResult(`**${title}**\n\n${formatted}`);
-    const entry = { id: Date.now(), prompt, source: 'local', preview: story.slice(0,250) };
+    // include Jai Pro score if present
+    const scoreLine = res.meta && res.meta.score ? `\n\n(Score: ${res.meta.score.toFixed(2)})` : '';
+    let out = `**${title}**\n\n${formatted}${scoreLine}`;
+    // If candidates are present, show a compact summary and option to explain
+    if (res.meta && res.meta.candidates) {
+      out += `\n\n(Top ${res.meta.candidates.length} candidates generated — best seed ${res.meta.candidates[0].seed}, score ${res.meta.candidates[0].score.toFixed(2)})`;
+    }
+    setResult(out);
+    const entry = { id: Date.now(), prompt, source: 'local', engine, grade, preview: story.slice(0,250) };
     const h = [entry, ...history].slice(0,20);
     setHistory(h); localStorage.setItem('story_history', JSON.stringify(h));
     setClarifyQuestion('');
+    setClarifyAnswer('');
     setLoading(false);
 
   }
@@ -99,12 +170,50 @@ export default function App() {
           <option value="dramatic">Dramatic</option>
         </select>
 
+        <label style={{ marginLeft: 8 }}>Engine: </label>
+        <select value={engine} onChange={(e) => setEngine(e.target.value)}>
+          <option value="jai">Jai (fast)</option>
+          <option value="jai-pro">Jai Pro (outline → expand → polish)</option>
+          <option value="remote">Remote (online model)</option>
+        </select>
+
+        {engine === 'remote' && (
+          <>
+            <label style={{ marginLeft: 8 }}>Model: </label>
+            <select value={remoteModel} onChange={(e) => setRemoteModel(e.target.value)}>
+              <option value="gpt-4o-mini">gpt-4o-mini</option>
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="gpt-4o-mini-instruct">gpt-4o-mini-instruct</option>
+            </select>
+          </>
+        )}
+
+        <label style={{ marginLeft: 8 }}>Grade: </label>
+        <select value={grade} onChange={(e) => setGrade(e.target.value)}>
+          <option value="K">K</option>
+          {Array.from({length:12}, (_,i)=>(i+1)).map(n=> <option key={n} value={n}>{n}</option>)}
+          <option value="Adult">Adult</option>
+          <option value="Professional">Professional</option>
+        </select>
+
         <label style={{ marginLeft: 8 }}>
           <input type="checkbox" checked={autoAskClarify} onChange={(e)=>setAutoAskClarify(e.target.checked)} /> Auto-ask clarify
         </label>
 
-        <span style={{ marginLeft: 12, color: '#6ecb7c', fontWeight: 600 }}>Jai Bot (local AI)</span> 
+        <span style={{ marginLeft: 12, color: '#6ecb7c', fontWeight: 600 }}>Jai Bot (local AI)</span>
       </div>
+
+      {clarifyQuestion && (
+        <div style={{ marginTop: 10, padding: 10, border: '1px dashed #ddd', borderRadius: 6, background: '#fbfbfb' }}>
+          <div style={{ fontWeight: 700 }}>Clarify — please answer:</div>
+          <div style={{ marginTop: 6, color: '#333' }}>{clarifyQuestion}</div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+            <input value={clarifyAnswer} onChange={(e)=>setClarifyAnswer(e.target.value)} placeholder="Add detail (e.g., 'a lonely librarian in a rain-soaked city, whimsical')" style={{ flex: 1 }} />
+            <button className="btn" onClick={() => { handleSearch(); }} style={{ background: '#6ecb7c' }}>Use answer & generate</button>
+            <button className="btn" onClick={() => { setClarifyQuestion(''); setClarifyAnswer(''); }}>Skip</button>
+          </div>
+        </div>
+      )}
 
       <div style={{ marginTop: 10 }}>
         <label>
@@ -287,7 +396,7 @@ export default function App() {
                     <button className="btn" style={{ background: '#333', padding: '8px 10px', width: '100%', textAlign: 'left' }} onClick={() => {
                       setPrompt(h.prompt); setResult(h.preview);
                     }}>
-                      <strong>{h.source === 'remote' ? 'Remote' : 'Local'}</strong>: {h.prompt.slice(0, 80)}
+                      <strong>{h.engine ? h.engine.toUpperCase() : (h.source === 'remote' ? 'REMOTE' : 'LOCAL')}</strong> {h.grade ? ` (Grade ${h.grade})` : ''}: {h.prompt.slice(0, 80)}
                     </button>
                   </li>
                 ))}
