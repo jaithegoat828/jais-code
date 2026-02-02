@@ -1,12 +1,10 @@
 import { useState } from "react";
-import { getBookInfo } from "./api.js";
-import { generateStory, availableGenres, formatStory } from "./StoryGenerator.js";
+import { generateStory, availableGenres, formatStory } from "./StoryGenerator.js"; // Jai Bot local AI only (no remote API)
 
 export default function App() {
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
-  const [useLocal, setUseLocal] = useState(true);
   const [genre, setGenre] = useState("fantasy");
   const [strictFollow, setStrictFollow] = useState(false);
   const [length, setLength] = useState(3);
@@ -14,12 +12,24 @@ export default function App() {
   const [creativity, setCreativity] = useState(1);
   const [seed, setSeed] = useState("");
   const [tone, setTone] = useState('neutral');
-  const [modelChoice, setModelChoice] = useState('gpt-4o-mini');
   const [history, setHistory] = useState(() => {
     try { return JSON.parse(localStorage.getItem('story_history') || '[]'); } catch(e) { return []; }
   });
   const [clarifyQuestion, setClarifyQuestion] = useState('');
   const [autoAskClarify, setAutoAskClarify] = useState(true);
+  // Local feedback store
+  const addLocalFeedback = (rating, comment='') => {
+    const r = JSON.parse(localStorage.getItem('local_feedback') || '[]');
+    r.unshift({ id: Date.now(), prompt, rating, comment, tone, strict: strictFollow, source: 'local' });
+    localStorage.setItem('local_feedback', JSON.stringify(r));
+  };
+  const exportFeedback = () => {
+    const data = localStorage.getItem('local_feedback') || '[]';
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'jais-feedback.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
+
   const [insertPageMarkers, setInsertPageMarkers] = useState(true);
   const [wordsPerPage, setWordsPerPage] = useState(100);
 
@@ -30,113 +40,38 @@ export default function App() {
     'Design a cozy fantasy quest for children',
   ];
 
-  // Detect whether a local client API key is present at build/run time (used only for quick local testing).
-  const hasClientApiKey = !!import.meta.env.VITE_OPENAI_API_KEY;
-  // Optional: force local-only offline mode via .env (set VITE_FORCE_LOCAL=true)
-  const forceLocal = String(import.meta.env.VITE_FORCE_LOCAL).toLowerCase() === 'true';
-
   async function handleSearch() {
     if (!prompt.trim()) return;
     setLoading(true);
 
-    // If forceLocal is enabled, always use local generator
-    if (forceLocal) {
-      const genresArg = Array.isArray(genre) ? genre : [genre];
-      const { title, story } = generateStory({ prompt, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null });
-      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
-      setResult(`(Offline mode enabled)\n\n**${title}**\n\n${formatted}`);
+    // If prompt is very short and auto-ask is enabled, ask a clarifying question
+    const words = (prompt||'').split(/\s+/).filter(Boolean).length;
+    if (words < 3 && autoAskClarify && !clarifyQuestion) {
+      setClarifyQuestion('Who is the main character? Where does this take place? What tone do you want?');
       setLoading(false);
       return;
     }
 
-
-
-    if (useLocal) {
-      const genresArg = Array.isArray(genre) ? genre : [genre];
-      const { title, story } = generateStory({ prompt, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null });
-      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
-      setResult(`**${title}**\n\n${formatted}`);
-      // save to history
-      const entry = { id: Date.now(), prompt, source: 'local', preview: story.slice(0,250) };
-      const h = [entry, ...history].slice(0,20);
-      setHistory(h); localStorage.setItem('story_history', JSON.stringify(h));
-      setLoading(false);
-      return;
-    }
-
-    const response = await getBookInfo(prompt, { genre, length, mode, creativity, tone, seed: seed || null, model: modelChoice });
-
-    // Helpful handling for common error messages from getBookInfo
-    if (typeof response === "string" && (response.includes("Missing server API key") || response.includes("Missing API key"))) {
-      // Auto-fallback and show friendly guidance
-      const { title, story } = generateStory({ prompt, genre, length, seed: seed || null });
-      const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
-      setResult(`(Missing server API key — using local generator instead)\n\n**${title}**\n\n${formatted}`);
-      setUseLocal(true);
-      setLoading(false);
-      return;
-    }
-
-    // If the server suggests a clarifying question, show it to the user
-    if (response && response.clarify && autoAskClarify) {
-      setClarifyQuestion(response.clarify);
-      setLoading(false);
-      return;
-    }
-
-    // If the remote response looks like a long story, apply light formatting for pages/punctuation
-    if (typeof response === "string" && response.length > 200) {
-      const formattedRemote = formatStory(response, { wordsPerPage, insertPageMarkers });
-      setResult(formattedRemote);
-      // Save to history
-      const entry = { id: Date.now(), prompt, source: 'remote', preview: (response || '').slice(0, 250) };
-      const h = [entry, ...history].slice(0, 20);
-      setHistory(h);
-      localStorage.setItem('story_history', JSON.stringify(h));
-      setLoading(false);
-      return;
-    }
-
-    // If response is an object (our proxy), extract .story
-    if (response && typeof response === 'object' && response.story) {
-      const formattedRemote = formatStory(response.story, { wordsPerPage, insertPageMarkers });
-      setResult(`**Remote Story**\n\n${formattedRemote}`);
-      const entry = { id: Date.now(), prompt, source: 'remote', preview: (response.story || '').slice(0, 250) };
-      const h = [entry, ...history].slice(0, 20);
-      setHistory(h);
-      localStorage.setItem('story_history', JSON.stringify(h));
-      setLoading(false);
-      return;
-    }
-
-    // Fallback: display whatever we got
-    setResult(typeof response === 'string' ? response : JSON.stringify(response));
+    const genresArg = Array.isArray(genre) ? genre : [genre];
+    const q = clarifyQuestion ? `${clarifyQuestion} ${prompt}` : prompt;
+    const { title, story } = generateStory({ prompt: q, genres: genresArg, strict: strictFollow, length, mode, creativity, seed: seed || null, tone });
+    const formatted = formatStory(story, { wordsPerPage, insertPageMarkers });
+    setResult(`**${title}**\n\n${formatted}`);
+    const entry = { id: Date.now(), prompt, source: 'local', preview: story.slice(0,250) };
+    const h = [entry, ...history].slice(0,20);
+    setHistory(h); localStorage.setItem('story_history', JSON.stringify(h));
+    setClarifyQuestion('');
     setLoading(false);
+
   }
 
   return (
     <div className="container">
       <h1>JAIS Story Generator</h1>
 
-      <label style={{ display: "block", marginTop: 10 }}>
-        <input
-          type="checkbox"
-          checked={useLocal}
-          onChange={(e) => setUseLocal(e.target.checked)}
-          disabled={forceLocal} // disable toggling when offline forced
-        />{' '}
-        Use local offline generator (no internet)
-        {!hasClientApiKey && !forceLocal && (
-          <span style={{ marginLeft: 8, color: '#f5c542', fontSize: 12 }}>
-            (Remote mode requires a server-side proxy or a local client API key)
-          </span>
-        )}
-        {forceLocal && (
-          <span style={{ marginLeft: 8, color: '#6ecb7c', fontSize: 12 }}>
-            (Offline-only mode enabled via VITE_FORCE_LOCAL)
-          </span>
-        )}
-      </label>
+      <div style={{ display: "block", marginTop: 10 }}>
+        <span style={{ fontWeight: 600, color: '#6ecb7c' }}>Jai Bot (local AI) — runs entirely in your browser</span>
+      </div>
 
       <div style={{ display: 'flex', gap: 8 }}>
         <input
@@ -164,15 +99,11 @@ export default function App() {
           <option value="dramatic">Dramatic</option>
         </select>
 
-        <label style={{ marginLeft: 8 }}>Model: </label>
-        <select value={modelChoice} onChange={(e) => setModelChoice(e.target.value)}>
-          <option value="gpt-4o-mini">gpt-4o-mini (fast)</option>
-          <option value="gpt-4o">gpt-4o (higher quality)</option>
-        </select>
-
         <label style={{ marginLeft: 8 }}>
           <input type="checkbox" checked={autoAskClarify} onChange={(e)=>setAutoAskClarify(e.target.checked)} /> Auto-ask clarify
         </label>
+
+        <span style={{ marginLeft: 12, color: '#6ecb7c', fontWeight: 600 }}>Jai Bot (local AI)</span> 
       </div>
 
       <div style={{ marginTop: 10 }}>
@@ -319,12 +250,11 @@ export default function App() {
               <span style={{ fontSize: 13, marginRight: 6 }}>Rate:</span>
               {[1,2,3,4,5].map(n => (
                 <button key={n} className="btn" onClick={async () => {
-                  try {
-                    await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, rating: n, comment: '', source: useLocal ? 'local' : 'remote' }) });
-                    alert('Thanks for the feedback!');
-                  } catch (e) { console.error(e); alert('Feedback failed.'); }
+                  addLocalFeedback(n);
+                  alert('Thanks for the feedback! (saved locally)');
                 }} style={{ background: '#8b5cf6' }}>{n}</button>
               ))}
+              <button className="btn" onClick={exportFeedback} style={{ marginLeft: 10, background: '#444' }}>Export feedback</button>
             </div>
 
             <div style={{ marginLeft: 8 }}>

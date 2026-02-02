@@ -177,7 +177,7 @@ export function resolveGenrePool(genres, rng = Math.random) {
   return pool;
 }
 
-export function generateStory({ prompt = "", genre = "fantasy", genres = null, strict = false, length = 3, mode = "simple", creativity = 1, seed = null } = {}) {
+export function generateStory({ prompt = "", genre = "fantasy", genres = null, strict = false, length = 3, mode = "simple", creativity = 1, seed = null, tone = 'neutral' } = {}) {
   const rng = createRNG(seed);
   // support genres or single genre input
   const wanted = genres ? normalizeGenres(genres) : normalizeGenres(genre);
@@ -189,7 +189,10 @@ export function generateStory({ prompt = "", genre = "fantasy", genres = null, s
     // include genre tokens to bias markov
     const genreSeed = wanted.join(' ');
     const mkPrompt = `${genreSeed} ${prompt}`.trim();
-    return generateMarkovStory({ prompt: mkPrompt, length: mkLen, temperature, seed });
+    const mk = generateMarkovStory({ prompt: mkPrompt, length: mkLen, temperature, seed });
+    // tone adjust the markov story body as well
+    mk.story = toneAdjust(mk.story, tone);
+    return mk;
   }
 
   // Simple generator using a pool from resolved genres
@@ -200,7 +203,9 @@ export function generateStory({ prompt = "", genre = "fantasy", genres = null, s
   const protagonist = chooseProtagonist(prompt, rng);
 
   if (mode === 'scaffold') {
-    return generateScaffoldedStory({ title, protagonist, prompt, genre: wanted[0] || 'fantasy', length, rng, creativity });
+    const scaffolded = generateScaffoldedStory({ title, protagonist, prompt, genre: wanted[0] || 'fantasy', length, rng, creativity });
+    scaffolded.story = toneAdjust(scaffolded.story, tone);
+    return scaffolded;
   }
 
   const hook = `${pick(gpool.subject, rng)} ${pick(gpool.hook, rng)}`;
@@ -230,7 +235,7 @@ export function generateStory({ prompt = "", genre = "fantasy", genres = null, s
 
   const full = `${title}\n\n${firstLine}\n\n${body.join(" ")}\n\n${ending}`;
   // pass array of genres for post-processing so ensureEntityActions can use relevant objects
-  const processed = postProcessText(full, prompt, (wanted && wanted[0]) || 'default', rng);
+  const processed = postProcessText(full, prompt, (wanted && wanted[0]) || 'default', rng, tone);
   // If strict, force inclusion of prompt tokens as sentences if missing
   if (strict && prompt) {
     const musts = prompt.split(/\s+/).filter(Boolean).slice(0, 6);
@@ -403,12 +408,38 @@ function grammarPatch(text, genre='default', rng = Math.random) {
   return out.join(' ');
 }
 
-function postProcessText(text, prompt = '', genre='default', rng = Math.random) {
+function clarifyPrompt(prompt) {
+  if (!prompt) return `Could you tell me: who is the main character? Where does this take place? What tone do you want (e.g., whimsical, dark, neutral)?`;
+  const words = (prompt || '').split(/\s+/).filter(Boolean).length;
+  if (words < 3) return `Could you add a little more detail? Who, where, and tone help (e.g., 'a lonely librarian in a rain-soaked city, whimsical')`;
+  return null;
+}
+
+function toneAdjust(text, tone = 'neutral') {
+  if (!text) return text;
+  if (tone === 'dark') {
+    // add atmospheric sentences
+    return text.replace(/\n\n$/, '') + "\n\nA shadow lingered at the edge of their days.";
+  }
+  if (tone === 'whimsical') {
+    return text.replace(/\n\n$/, '') + "\n\nSmall wonders piled up like confetti around them.";
+  }
+  if (tone === 'child') {
+    return text.replace(/\n\n$/, '') + "\n\nAnd they learned something gentle before the story ended.";
+  }
+  if (tone === 'dramatic') {
+    return text.replace(/\n\n$/, '') + "\n\nIt changed everything, and nothing would be the same again.";
+  }
+  return text;
+}
+
+function postProcessText(text, prompt = '', genre='default', rng = Math.random, tone = 'neutral') {
   if (!text) return text;
   let t = removeRepetition(text);
   t = ensureEntityActions(t, prompt, genre, rng);
   t = grammarPatch(t, genre, rng);
   t = fixPunctuationAndCapitalize(t);
+  t = toneAdjust(t, tone);
   return t;
 }
 

@@ -1,6 +1,6 @@
 # jais-code
 
-Simple Vite + React demo that uses the OpenAI API.
+A simple Vite + React demo that runs a local storyteller called **Jai Bot** — no external API required.
 
 ## Quick start
 
@@ -10,36 +10,40 @@ Simple Vite + React demo that uses the OpenAI API.
 npm install
 ```
 
-2. Add your API key (do NOT commit this):
+2. Run locally:
 
-```
-cp .env.example .env
-# edit .env and add your key
-```
-
-3. Run locally:
-
-```
+```bash
 npm run dev
 ```
 
-4. Build for GitHub Pages and deploy (workflow is included):
+3. Build for GitHub Pages and deploy (workflow is included):
 
-```
+```bash
 npm run build
 # The GitHub Action will deploy `dist/` to the `gh-pages` branch on push to `main`.
 ```
 
-## Security note ⚠️
+## Local-only: Jai Bot ✅
 
-This app can call OpenAI in two ways:
+This project uses a fully local story generator named **Jai Bot**. There is no remote API or external key required — the app generates stories on-device so it works offline and preserves privacy.
 
-- **Local (development)**: set `VITE_OPENAI_API_KEY` in a local `.env` (do NOT commit this). This is only for quick testing and will expose the key if you build the client for production.
-- **Recommended (production)**: host a **server-side proxy** (serverless function) that keeps your OpenAI key secret. The repo includes `api/generate.js` as an example serverless proxy (designed for Vercel). The client calls `/api/generate` so your key never appears in the browser.
+Highlights:
+- **No external calls**: Everything runs in the browser using the built-in generation logic.
+- **Clarifying questions**: If your prompt is short, Jai Bot can ask a clarifying question in the UI to get better input.
+- **Feedback stored locally**: Ratings and comments are saved in `localStorage` and can be exported from the UI as a JSON file.
 
-If you use GitHub Pages for the frontend, host the serverless function separately (for example, on Vercel) and the front-end can call `https://<your-vercel>/api/generate`.
+## Features
+- Multi-genre mixes and **Strict** mode to follow prompts closely.
+- Deterministic seeding (enter a seed to reproduce a result).
+- Page markers and simple pagination controls for long stories.
+- Tone selector and creativity slider to vary output.
 
-If the server returns `Missing server API key`, deploy the serverless function and add `OPENAI_API_KEY` to your deployment provider's environment variables.
+Files:
+- `StoryGenerator.js` — local generation logic (templates + sentence bank).
+- `StoryModel.js` — small Markov-chain based generator for varied, offline results.
+- `App.jsx` — UI and controls for Jai Bot, with history, ratings, and export.
+
+This setup is ideal for demos, school projects, and situations where you prefer not to call external services.
 
 
 ## Notes
@@ -47,15 +51,11 @@ If the server returns `Missing server API key`, deploy the serverless function a
 
 ## Offline story generator (works without internet) ✅
 
-This project now includes a **local, offline story generator** that does not call external APIs. Use the checkbox in the app to toggle the local generator on; it supports simple genres, variable length, and uses your prompt as a seed.
+This project includes a **local, offline story generator** named *Jai Bot* that runs entirely in the browser — no external API or key required. It supports multi-genre mixes, variable length, deterministic seeding, clarifying questions for short prompts, and tone adjustments.
 
 New formatting features:
-- **Pagination:** the app can insert page markers and split output into pages. The default is **100 words per page**; this can be changed in the UI. Page markers look like `--- Page 1/5 ---` and are included in downloads and copy/share operations when enabled.
-- **Punctuation & Sentences:** the generator now ensures sentences end with `.`, `!`, or `?` where appropriate and capitalizes sentence starts to make output more school-ready.
-
-Note: If you do not set `VITE_OPENAI_API_KEY` in a `.env` file, the app will automatically **disable remote mode** and **fallback to the local generator**. If you try to use remote without a key, the app will switch to local and show a helpful message.
-
-If you'd like to force the app to run **offline-only** even when an API key exists, set `VITE_FORCE_LOCAL=true` in your `.env` file. When enabled, the UI will show "(Offline-only mode enabled via VITE_FORCE_LOCAL)" and remote calls will be bypassed.
+- **Pagination:** insert page markers and split output into pages. The default is **100 words per page**; this can be changed in the UI. Page markers like `--- Page 1/5 ---` are included in downloads and copy/share operations when enabled.
+- **Punctuation & Sentences:** the generator ensures sentences end with `.`, `!`, or `?` where appropriate and capitalizes sentence starts to make output more readable and school-ready.
 
 Format selector — Game & Mod support 🎮🧩
 - Use the **Format** dropdown to pick: `Story`, `Game guide`, or `Mod idea`.
@@ -69,10 +69,9 @@ Example prompts:
 - "Design a sci-fi game level with a ghost signal"
 
 Files:
-- `StoryGenerator.js` — local generation logic (templates + sentence bank). Now supports **multi-genre** mixes and **Strict** mode to follow prompts closely.
-- `StoryModel.js` — small Markov-chain based generator for more 'AI-like' results (no network required). Markov seeding now accepts genres and a numeric seed for determinism.
-- UI updated in `App.jsx` to control generator options (Simple vs Advanced Markov), **multi-genre selection** (including 'All genres'), **Strict** mode (follow prompt exactly), creativity, model choice (remote), and auto-fallback when no key is present.
+- `StoryGenerator.js` — local generation logic (templates + sentence bank). Supports **multi-genre** mixes and **Strict** mode to follow prompts closely, clarifying questions for short prompts, and tone adjustments.
+- `StoryModel.js` — small Markov-chain based generator for varied, offline results (no network required). Markov seeding accepts genres and a numeric seed for determinism.
+- `App.jsx` — UI and controls for Jai Bot, with history, ratings, and export. The app runs fully offline by default.
 - **Save / Share / Copy** buttons: Save downloads the story as a `.txt` file (works on Chromebooks), Share uses the Web Share API when available, and Copy puts the story on the clipboard.
-- New endpoints: `/api/generate` (server-side proxy for OpenAI) and `/api/feedback` (collect ratings/comments). See the docs above for deployment and environment variable instructions.
 
 This is safe for environments that cannot access the web and is ideal for school projects or demos.
