@@ -77,6 +77,24 @@ const GENRES = {
       "that smelled of the sea",
     ],
   },
+  fiction: {
+    title: ["Tales of", "Stories from", "Chronicles of"],
+    subject: ["strangers", "a small town", "a curious traveler", "a lost journal"],
+    hook: [
+      "that blurred the line between dream and waking",
+      "on a night that changed everything",
+      "whose quiet hid deeper maps",
+    ],
+  },
+  nonfiction: {
+    title: ["Notes on", "A Brief History of", "Understanding"],
+    subject: ["a scientist", "a community", "a discovery", "a method"],
+    hook: [
+      "based on archival records",
+      "a practical guide to the idea",
+      "from eyewitness accounts",
+    ],
+  },
 };
 
 // Seeded RNG helper (mulberry32-like) — deterministic when a numeric seed is provided
@@ -242,8 +260,8 @@ export function generateStory({ prompt = "", genre = "fantasy", genres = null, s
     const parts = outline.beats.map((b) => expandBeat(b, prompt, g, rng, grade));
     const raw = `${titleCase(outline.title)}\n\n${parts.join('\n\n')}`;
     const polished = polishText(raw, { grade, tone, rng });
-    const score = scoreStory(polished, outline, prompt);
-    return { title: titleCase(outline.title), story: polished, meta: { engine: 'jai-pro', score } };
+    const scoreObj = scoreStory(polished, outline, prompt);
+    return { title: titleCase(outline.title), story: polished, meta: { engine: 'jai-pro', score: scoreObj.score, scoreDetails: scoreObj.details } };
   }
 
   if (mode === "markov") {

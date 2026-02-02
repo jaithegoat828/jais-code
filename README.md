@@ -33,7 +33,7 @@ Highlights:
 - **Feedback stored locally**: Ratings and comments are saved in `localStorage` and can be exported from the UI as a JSON file.
 
 ## Features
-- Multi-genre mixes and **Strict** mode to follow prompts closely.
+- Broad genre coverage including **Fiction** and **Nonfiction**, multi-genre mixes and **Strict** mode to follow prompts closely.
 - Deterministic seeding (enter a seed to reproduce a result).
 - Page markers and simple pagination controls for long stories.
 - Tone selector and creativity slider to vary output.
